@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { buildQueryString, generateState } from "../utils/spotify";
+import { buildSpotifyQueryString, generateState } from "../utils/spotify";
 import SpotifyWebApi from "spotify-web-api-js";
 
 const spotifyApi = new SpotifyWebApi();
@@ -10,10 +10,12 @@ let {
   REACT_APP_SPOTIFY_RELEASE_CLIENT_ID,
   REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI,
   REACT_APP_SPOTIFY_RELEASE_SCOPES,
+  PORT,
 } = process.env;
 
 if (!REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI) {
-  REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI = "http://localhost:3000/spotify-redirect"
+  // TODO would have to update spotify api page to allow 3006 also
+  REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI = `http://127.0.0.1:${PORT || 3000}/spotify-redirect`
 }
 
 if (!REACT_APP_SPOTIFY_RELEASE_SCOPES) {
@@ -78,7 +80,7 @@ const useProvideSpotify = () => {
     type = "album,artist,playlist,track,show,episode",
     limit = 20,
   }) => {
-    const qs = buildQueryString({
+    const qs = buildSpotifyQueryString({
       q: query,
       type,
       limit,

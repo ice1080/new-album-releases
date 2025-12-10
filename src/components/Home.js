@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useSpotify } from "../hooks/useSpotify";
+import { useDeezer } from "../hooks/useDeezer";
 import RecentAlbumReleases from "./RecentAlbumReleases";
 import TopArtists from "./TopArtists";
 import LoadingIcon from "./LoadingIcon";
@@ -16,7 +16,6 @@ export default function Home() {
   const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
   let CUTOFF_DATE;
 
-  const { spotifyApi, hasLoggedIn } = useSpotify();
   const [topArtists, setTopArtists] = useState([]);
   const [savedAlbumArtists, setSavedAlbumArtists] = useState([]);
   const [recentAlbums, setRecentAlbums] = useState([]);
@@ -26,265 +25,265 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [apiCount, setApiCount] = useState(0);
 
-  useEffect(() => {
-    if (hasLoggedIn) {
-      getAllTopArtists();
-      getAllSavedAlbums();
-    }
-  }, [hasLoggedIn]);
+  // const getAllTopArtists = () => {
+  //   console.log("getAllTopArtists");
+  //   setIsLoading(true);
+  //   let artistPromises = [];
+  //   let artistLimitArray = [50, 50];
+  //   artistLimitArray.forEach((limit, i) => {
+  //     incrementApiCount();
+  //     artistPromises.push(
+  //       spotifyApi.getMyTopArtists({
+  //         time_range: "long_term",
+  //         limit: limit,
+  //         offset: i * TOP_ARTISTS_LIMIT,
+  //       })
+  //     );
+  //   });
+  //   Promise.all(artistPromises).then((artistsList) => {
+  //     let localTopArtists = [];
+  //     artistsList.forEach((values) => {
+  //       localTopArtists = localTopArtists.concat(values.items);
+  //     });
+  //     localTopArtists = localTopArtists.sort((a, b) => {
+  //       if (a.popularity > b.popularity) return -1;
+  //       if (b.popularity < a.popularity) return 1;
+  //       return 0;
+  //     });
+  //     /* console.log("top artists", localTopArtists, localTopArtists.length); */
+  //     setTopArtists(localTopArtists);
+  //   });
+  // };
 
-  useEffect(() => {
-    /* console.log("topArtists", topArtists); */
-    /* console.log("savedAlbumArtists", savedAlbumArtists); */
-    if (
-      topArtists.length > 0 &&
-      (savedAlbumArtists.length > 0 || !addSavedToQuery)
-    ) {
-      getAllRecentAlbums();
-    }
-  }, [topArtists, savedAlbumArtists]);
+  // const getAllSavedAlbums = () => {
+  //   console.log("getAllSavedAlbums");
+  //   if (addSavedToQuery) {
+  //     // TODO add sleep here?
+  //     setIsLoading(true);
+  //     let albumPromises = [];
+  //     const maxLimit = MAX_SAVED_ALBUMS / 50;
+  //     for (let i = 0; i < maxLimit; i++) {
+  //       incrementApiCount();
+  //       albumPromises.push(
+  //         spotifyApi.getMySavedAlbums({
+  //           limit: 50,
+  //           offset: i * SAVED_ALBUMS_LIMIT,
+  //         })
+  //       );
+  //     }
+  //     Promise.all(albumPromises).then((albumsList) => {
+  //       let localSavedAlbums = [];
+  //       albumsList.forEach((values) => {
+  //         localSavedAlbums = localSavedAlbums.concat(
+  //           values.items.map((el) => el.album)
+  //         );
+  //       });
+  //       let artistSavedAlbumCount = {};
+  //       let minSavedCountArtists = new Set();
+  //       localSavedAlbums.forEach((album) => {
+  //         album.artists.forEach((artist) => {
+  //           let newCount = 1;
+  //           if (artistSavedAlbumCount[artist.name]) {
+  //             newCount = artistSavedAlbumCount[artist.name].count + 1;
+  //             artistSavedAlbumCount[artist.name].count = newCount;
+  //           } else {
+  //             artistSavedAlbumCount[artist.name] = {
+  //               count: newCount,
+  //               artist: artist,
+  //             };
+  //           }
+  //           if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
+  //             minSavedCountArtists.add(artist);
+  //           }
+  //         });
+  //       });
+  //       /* const filteredTest = Object.keys(artistSavedAlbumCount)
+  //        *   .filter(
+  //        *     (artistName) =>
+  //        *       artistSavedAlbumCount[artistName].count >=
+  //        *       ARTIST_MIN_SAVED_ALBUM_COUNT
+  //        *   )
+  //        *   .reduce(
+  //        *     (res, key) =>
+  //        *       Object.assign(res, { [key]: artistSavedAlbumCount[key] }),
+  //        *     {}
+  //        *   ); */
 
-  useEffect(() => {
-    if (addSavedToQuery && savedAlbumArtists.length === 0) {
-      getAllSavedAlbums();
-    }
-  }, [addSavedToQuery]);
+  //       /* console.log("localSavedAlbums", localSavedAlbums); */
+  //       /* console.log(
+  //        *   "artistSavedAlbumCount",
+  //        *   artistSavedAlbumCount,
+  //        *   Object.keys(artistSavedAlbumCount).length
+  //        * ); */
+  //       /* console.log(
+  //        *   `artists with more than ${ARTIST_MIN_SAVED_ALBUM_COUNT} saved albums`,
+  //        *   filteredTest,
+  //        *   Object.keys(filteredTest).length
+  //        * ); */
+  //       console.log(
+  //         "savedAlbumArtists",
+  //         minSavedCountArtists,
+  //         minSavedCountArtists.size
+  //       );
+  //       setSavedAlbumArtists(Array.from(minSavedCountArtists));
+  //     });
+  //   }
+  // };
 
-  useEffect(() => {
-    if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {
-      addSavedAlbums();
-    }
-  }, [recentAlbums, showMySavedAlbums]);
+  // const addSavedAlbums = async () => {
+  //   console.log("addSavedAlbums");
+  //   await new Promise((r) => setTimeout(r, 5000));
+  //   let tempRecentAlbums = { ...recentAlbums };
+  //   const albumIds = Object.keys(recentAlbums).filter(
+  //     (albumId) => recentAlbums[albumId].isAlbumSaved === undefined
+  //   );
+  //   if (albumIds.length) {
+  //     for (let i = 0; i < albumIds.length; i += SAVED_ALBUMS_LIMIT) {
+  //       const tempIds = albumIds.slice(i, i + SAVED_ALBUMS_LIMIT);
+  //       incrementApiCount();
+  //       await spotifyApi
+  //         .containsMySavedAlbums(tempIds)
+  //         .then((savedBooleans, err) => {
+  //           savedBooleans.forEach((isAlbumSaved, idx) => {
+  //             tempRecentAlbums[tempIds[idx]].isAlbumSaved = isAlbumSaved;
+  //           });
+  //         });
+  //     }
+  //     setRecentAlbums(tempRecentAlbums);
+  //   }
+  // };
 
-  const getAllTopArtists = () => {
-    console.log("getAllTopArtists");
-    setIsLoading(true);
-    let artistPromises = [];
-    let artistLimitArray = [50, 50];
-    artistLimitArray.forEach((limit, i) => {
-      incrementApiCount();
-      artistPromises.push(
-        spotifyApi.getMyTopArtists({
-          time_range: "long_term",
-          limit: limit,
-          offset: i * TOP_ARTISTS_LIMIT,
-        })
-      );
-    });
-    Promise.all(artistPromises).then((artistsList) => {
-      let localTopArtists = [];
-      artistsList.forEach((values) => {
-        localTopArtists = localTopArtists.concat(values.items);
-      });
-      localTopArtists = localTopArtists.sort((a, b) => {
-        if (a.popularity > b.popularity) return -1;
-        if (b.popularity < a.popularity) return 1;
-        return 0;
-      });
-      /* console.log("top artists", localTopArtists, localTopArtists.length); */
-      setTopArtists(localTopArtists);
-    });
-  };
+  // const getAllRecentAlbums = async () => {
+  //   console.log("getAllRecentAlbums");
+  //   await new Promise((r) => setTimeout(r, 5000));
+  //   let allRecentAlbums = {};
+  //   let artistAlbumPromises = [];
+  //   let allArtists = combineArtistLists();
+  //   console.log("allArtists", allArtists.length, allArtists);
+  //   let i = 0;
+  //   for (const artist of allArtists) {
+  //     if (i % 50 === 0) {
+  //       await new Promise((r) => setTimeout(r, 5000));
+  //     }
+  //     /* allArtists.forEach((artist) => { */
+  //     // this may be needed once more artists are added (e.g. hundreds)
+  //     /* if (!artist.recentAlbums) { */
+  //     incrementApiCount();
+  //     artistAlbumPromises.push(
+  //       spotifyApi.getArtistAlbums(artist.id, {
+  //         include_groups: "album",
+  //       })
+  //     );
+  //     /* } */
+  //     /* }); */
+  //     i++;
+  //   }
+  //   Promise.all(artistAlbumPromises).then((values) => {
+  //     values.forEach((data, i) => {
+  //       if (data.items && data.items.length) {
+  //         const recentArtistAlbums = data.items
+  //           .filter((album) => Date.parse(album.release_date) > getCutoffDate())
+  //           .map((album) => {
+  //             album.artistName = allArtists[i].name;
+  //             return album;
+  //           });
+  //         if (recentArtistAlbums.length > 0) {
+  //           recentArtistAlbums.map((item) => (allRecentAlbums[item.id] = item));
+  //         }
+  //       }
+  //     });
+  //     setRecentAlbums(allRecentAlbums);
+  //     setIsLoading(false);
+  //     /* console.log("done retrieving all recent albums"); */
+  //   });
+  // };
 
-  const getAllSavedAlbums = () => {
-    console.log("getAllSavedAlbums");
-    if (addSavedToQuery) {
-      // TODO add sleep here?
-      setIsLoading(true);
-      let albumPromises = [];
-      const maxLimit = MAX_SAVED_ALBUMS / 50;
-      for (let i = 0; i < maxLimit; i++) {
-        incrementApiCount();
-        albumPromises.push(
-          spotifyApi.getMySavedAlbums({
-            limit: 50,
-            offset: i * SAVED_ALBUMS_LIMIT,
-          })
-        );
-      }
-      Promise.all(albumPromises).then((albumsList) => {
-        let localSavedAlbums = [];
-        albumsList.forEach((values) => {
-          localSavedAlbums = localSavedAlbums.concat(
-            values.items.map((el) => el.album)
-          );
-        });
-        let artistSavedAlbumCount = {};
-        let minSavedCountArtists = new Set();
-        localSavedAlbums.forEach((album) => {
-          album.artists.forEach((artist) => {
-            let newCount = 1;
-            if (artistSavedAlbumCount[artist.name]) {
-              newCount = artistSavedAlbumCount[artist.name].count + 1;
-              artistSavedAlbumCount[artist.name].count = newCount;
-            } else {
-              artistSavedAlbumCount[artist.name] = {
-                count: newCount,
-                artist: artist,
-              };
-            }
-            if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
-              minSavedCountArtists.add(artist);
-            }
-          });
-        });
-        /* const filteredTest = Object.keys(artistSavedAlbumCount)
-         *   .filter(
-         *     (artistName) =>
-         *       artistSavedAlbumCount[artistName].count >=
-         *       ARTIST_MIN_SAVED_ALBUM_COUNT
-         *   )
-         *   .reduce(
-         *     (res, key) =>
-         *       Object.assign(res, { [key]: artistSavedAlbumCount[key] }),
-         *     {}
-         *   ); */
+  // const combineArtistLists = () => {
+  //   let combined = {};
+  //   topArtists.forEach((artist) => {
+  //     combined[artist.id] = artist;
+  //   });
+  //   if (addSavedToQuery) {
+  //     savedAlbumArtists.forEach((artist) => {
+  //       if (!combined[artist.id]) {
+  //         combined[artist.id] = artist;
+  //       }
+  //     });
+  //   }
+  //   return Object.values(combined);
+  // };
 
-        /* console.log("localSavedAlbums", localSavedAlbums); */
-        /* console.log(
-         *   "artistSavedAlbumCount",
-         *   artistSavedAlbumCount,
-         *   Object.keys(artistSavedAlbumCount).length
-         * ); */
-        /* console.log(
-         *   `artists with more than ${ARTIST_MIN_SAVED_ALBUM_COUNT} saved albums`,
-         *   filteredTest,
-         *   Object.keys(filteredTest).length
-         * ); */
-        console.log(
-          "savedAlbumArtists",
-          minSavedCountArtists,
-          minSavedCountArtists.size
-        );
-        setSavedAlbumArtists(Array.from(minSavedCountArtists));
-      });
-    }
-  };
+  // const getCutoffDate = () => {
+  //   if (!CUTOFF_DATE) {
+  //     let d = new Date();
+  //     d.setDate(d.getDate() - CUTOFF_DAYS_AGO);
+  //     CUTOFF_DATE = d;
+  //   }
+  //   return CUTOFF_DATE;
+  // };
 
-  const addSavedAlbums = async () => {
-    console.log("addSavedAlbums");
-    await new Promise((r) => setTimeout(r, 5000));
-    let tempRecentAlbums = { ...recentAlbums };
-    const albumIds = Object.keys(recentAlbums).filter(
-      (albumId) => recentAlbums[albumId].isAlbumSaved === undefined
-    );
-    if (albumIds.length) {
-      for (let i = 0; i < albumIds.length; i += SAVED_ALBUMS_LIMIT) {
-        const tempIds = albumIds.slice(i, i + SAVED_ALBUMS_LIMIT);
-        incrementApiCount();
-        await spotifyApi
-          .containsMySavedAlbums(tempIds)
-          .then((savedBooleans, err) => {
-            savedBooleans.forEach((isAlbumSaved, idx) => {
-              tempRecentAlbums[tempIds[idx]].isAlbumSaved = isAlbumSaved;
-            });
-          });
-      }
-      setRecentAlbums(tempRecentAlbums);
-    }
-  };
+  // const isDuplicateAlbum = (album1, album2) => {
+  //   // todo figure out a better way to display duplicate albums
+  //   return (
+  //     album1.id === album2.id
+  //     /* || */
+  //     /* (album1.name === album2.name && album1.artistName === album2.artistName) */
+  //   );
+  // };
 
-  const getAllRecentAlbums = async () => {
-    console.log("getAllRecentAlbums");
-    await new Promise((r) => setTimeout(r, 5000));
-    let allRecentAlbums = {};
-    let artistAlbumPromises = [];
-    let allArtists = combineArtistLists();
-    console.log("allArtists", allArtists.length, allArtists);
-    let i = 0;
-    for (const artist of allArtists) {
-      if (i % 50 === 0) {
-        await new Promise((r) => setTimeout(r, 5000));
-      }
-      /* allArtists.forEach((artist) => { */
-      // this may be needed once more artists are added (e.g. hundreds)
-      /* if (!artist.recentAlbums) { */
-      incrementApiCount();
-      artistAlbumPromises.push(
-        spotifyApi.getArtistAlbums(artist.id, {
-          include_groups: "album",
-        })
-      );
-      /* } */
-      /* }); */
-      i++;
-    }
-    Promise.all(artistAlbumPromises).then((values) => {
-      values.forEach((data, i) => {
-        if (data.items && data.items.length) {
-          const recentArtistAlbums = data.items
-            .filter((album) => Date.parse(album.release_date) > getCutoffDate())
-            .map((album) => {
-              album.artistName = allArtists[i].name;
-              return album;
-            });
-          if (recentArtistAlbums.length > 0) {
-            recentArtistAlbums.map((item) => (allRecentAlbums[item.id] = item));
-          }
-        }
-      });
-      setRecentAlbums(allRecentAlbums);
-      setIsLoading(false);
-      /* console.log("done retrieving all recent albums"); */
-    });
-  };
+  // const filterAlbums = (albums) => {
+  //   if (albums) {
+  //     return (
+  //       Object.values(albums)
+  //         /* .filter((albumId, idx, array) => {
+  //          *   return (
+  //          *     array.findIndex((arrayEl) =>
+  //          *       isDuplicateAlbum(albums[arrayEl], albums[albumId])
+  //          *     ) === idx
+  //          *   );
+  //          * }) */
+  //         .sort((a, b) => {
+  //           return new Date(b.release_date) - new Date(a.release_date);
+  //         })
+  //     );
+  //   } else {
+  //     return [];
+  //   }
+  // };
 
-  const combineArtistLists = () => {
-    let combined = {};
-    topArtists.forEach((artist) => {
-      combined[artist.id] = artist;
-    });
-    if (addSavedToQuery) {
-      savedAlbumArtists.forEach((artist) => {
-        if (!combined[artist.id]) {
-          combined[artist.id] = artist;
-        }
-      });
-    }
-    return Object.values(combined);
-  };
+  // const incrementApiCount = () => {
+  //   setApiCount((prevCount) => prevCount + 1);
+  // };
 
-  const getCutoffDate = () => {
-    if (!CUTOFF_DATE) {
-      let d = new Date();
-      d.setDate(d.getDate() - CUTOFF_DAYS_AGO);
-      CUTOFF_DATE = d;
-    }
-    return CUTOFF_DATE;
-  };
+  // useEffect(() => {
+  //   if (hasLoggedIn) {
+  //     getAllTopArtists();
+  //     getAllSavedAlbums();
+  //   }
+  // }, [getAllSavedAlbums, getAllTopArtists, hasLoggedIn]);
 
-  const isDuplicateAlbum = (album1, album2) => {
-    // todo figure out a better way to display duplicate albums
-    return (
-      album1.id === album2.id
-      /* || */
-      /* (album1.name === album2.name && album1.artistName === album2.artistName) */
-    );
-  };
+  // useEffect(() => {
+  //   /* console.log("topArtists", topArtists); */
+  //   /* console.log("savedAlbumArtists", savedAlbumArtists); */
+  //   if (
+  //     topArtists.length > 0 &&
+  //     (savedAlbumArtists.length > 0 || !addSavedToQuery)
+  //   ) {
+  //     getAllRecentAlbums();
+  //   }
+  // }, [topArtists, savedAlbumArtists]);
 
-  const filterAlbums = (albums) => {
-    if (albums) {
-      return (
-        Object.values(albums)
-          /* .filter((albumId, idx, array) => {
-           *   return (
-           *     array.findIndex((arrayEl) =>
-           *       isDuplicateAlbum(albums[arrayEl], albums[albumId])
-           *     ) === idx
-           *   );
-           * }) */
-          .sort((a, b) => {
-            return new Date(b.release_date) - new Date(a.release_date);
-          })
-      );
-    } else {
-      return [];
-    }
-  };
+  // useEffect(() => {
+  //   if (addSavedToQuery && savedAlbumArtists.length === 0) {
+  //     getAllSavedAlbums();
+  //   }
+  // }, [addSavedToQuery]);
 
-  const incrementApiCount = () => {
-    setApiCount((prevCount) => prevCount + 1);
-  };
+  // useEffect(() => {
+  //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {
+  //     addSavedAlbums();
+  //   }
+  // }, [recentAlbums, showMySavedAlbums]);
 
   const renderCurrentView = () => {
     if (currentView === "artists") {
@@ -310,7 +309,7 @@ export default function Home() {
             />
           </label>
 
-          <RecentAlbumReleases recentAlbums={filterAlbums(recentAlbums)} />
+          {/* <RecentAlbumReleases recentAlbums={filterAlbums(recentAlbums)} /> */}
         </>
       );
     }

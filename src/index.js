@@ -3,17 +3,14 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider, createBrowserRouter, Outlet } from "react-router-dom";
 import App from "./App";
 import reportWebVitals from "./reportWebVitals";
-import { SpotifyProvider } from "./hooks/useSpotify";
-import SpotifyRedirect from "./components/SpotifyRedirect";
+import TidalRedirect from "./components/TidalRedirect";
 import Home from "./components/Home";
 import "./index.css";
 
 const router = createBrowserRouter([
   {
     element: (
-      <SpotifyProvider>
         <Outlet />
-      </SpotifyProvider>
     ),
     children: [
       {
@@ -21,8 +18,8 @@ const router = createBrowserRouter([
         element: <App />,
       },
       {
-        path: "/spotify-redirect",
-        element: <SpotifyRedirect />,
+        path: "/tidal-redirect",
+        element: <TidalRedirect />,
       },
       {
         path: "/home",

@@ -11,7 +11,7 @@ export const generateState = (length) => {
   return text;
 };
 
-export const buildQueryString = (queryParams) => {
+export const buildSpotifyQueryString = (queryParams) => {
   return Object.keys(queryParams)
     .filter((key) => {
       const value = queryParams[key];

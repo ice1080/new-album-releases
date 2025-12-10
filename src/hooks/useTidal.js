@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import * as auth from "@tidal-music/auth";
+import { createAPIClient } from "@tidal-music/api";
 
 let {
   REACT_APP_TIDAL_CLIENT_ID,
-  REACT_APP_TIDAL_CLIENT_SECRET,
   REACT_APP_TIDAL_REDIRECT_URI,
   REACT_APP_TIDAL_SCOPES,
   PORT,
@@ -15,16 +15,18 @@ if (!REACT_APP_TIDAL_REDIRECT_URI) {
 }
 
 if (!REACT_APP_TIDAL_SCOPES) {
-  REACT_APP_TIDAL_SCOPES = ["r_usr"];
+  REACT_APP_TIDAL_SCOPES = [
+    'collection.read',
+    'playlists.read',
+    'recommendations.read',
+    'search.read',
+  ];
 }
-
-const BASE_API_URL = "https://api.tidal.com/v2";
 
 const STORAGE_KEYS = {
   ACCESS_TOKEN: "TIDAL_ACCESS_TOKEN",
   EXP_TIMESTAMP: "TIDAL_TOKEN_EXPIRE_TIMESTAMP",
   REFRESH_TOKEN: "TIDAL_REFRESH_TOKEN",
-  INITIALIZED: "TIDAL_INITIALIZED",
 };
 
 export const useTidal = () => {
@@ -35,19 +37,18 @@ export const useTidal = () => {
 
   const navigate = useNavigate();
 
+  // Create API client once and reuse it
+  const tidalClient = useMemo(() => {
+    return createAPIClient(auth.credentialsProvider);
+  }, []);
+
   const initializeAuth = async () => {
     try {
-      const isInitialized = window.localStorage.getItem(STORAGE_KEYS.INITIALIZED);
-      
-      if (!isInitialized && REACT_APP_TIDAL_CLIENT_ID) {
         await auth.init({
           clientId: REACT_APP_TIDAL_CLIENT_ID,
-          clientSecret: REACT_APP_TIDAL_CLIENT_SECRET,
-          credentialsStorageKey: "tidal_credentials",
+          credentialsStorageKey: "authorizationCode",
           scopes: [REACT_APP_TIDAL_SCOPES],
         });
-        window.localStorage.setItem(STORAGE_KEYS.INITIALIZED, "true");
-      }
     } catch (err) {
       console.error("Failed to initialize Tidal auth:", err);
     }
@@ -56,7 +57,7 @@ export const useTidal = () => {
   const invalidateToken = useCallback(() => {
     try {
       Object.values(STORAGE_KEYS).forEach((key) => {
-        window.localStorage.removeItem(key);
+        localStorage.removeItem(key);
       });
       // Clear credentials from Tidal SDK if method exists
       if (auth.credentialsProvider && typeof auth.credentialsProvider.clearCredentials === 'function') {
@@ -74,11 +75,11 @@ export const useTidal = () => {
   const hasTokenExpired = useCallback(() => {
     try {
       const accessToken =
-        token || window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+        token || localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       const expTimestamp =
         tokenExp ||
-        (window.localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
-          ? parseInt(window.localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
+        (localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
+          ? parseInt(localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
           : null);
 
       if (!accessToken) {
@@ -98,46 +99,13 @@ export const useTidal = () => {
     }
   }, [token, tokenExp]);
 
-  const refreshTokenIfNeeded = useCallback(async () => {
-    try {
-      const credentials = await auth.credentialsProvider.getCredentials();
-      if (credentials?.token) {
-        setToken(credentials.token);
-        // Tidal SDK handles token refresh automatically, but we store expiration if available
-        if (credentials.expiresAt) {
-          const expTimestamp = Math.floor(credentials.expiresAt / 1000);
-          setTokenExp(expTimestamp);
-          window.localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to refresh token:", err);
-      invalidateToken();
-    }
-  }, [invalidateToken]);
-
   const login = async () => {
     try {
       await initializeAuth();
-      
+
       const loginUrl = await auth.initializeLogin({ redirectUri: REACT_APP_TIDAL_REDIRECT_URI });
       
-      const popup = window.open(
-        loginUrl,
-        "Login with Tidal",
-        "width=600,height=800"
-      );
-
-      window.tidalAuthCallback = async (accessToken, expTimestamp) => {
-        popup.close();
-
-        setToken(accessToken);
-        setTokenExp(expTimestamp);
-        window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-        if (expTimestamp) {
-          window.localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
-        }
-      };
+      window.open(loginUrl, "_self");
     } catch (err) {
       console.error("Login failed:", err);
     }
@@ -146,23 +114,26 @@ export const useTidal = () => {
   const storeTokenAtRedirect = async () => {
     try {
       await initializeAuth();
-      await auth.finalizeLogin();
+      await auth.finalizeLogin(window.location.search);
 
       const credentials = await auth.credentialsProvider.getCredentials();
-      
+
       if (credentials?.token) {
         const accessToken = credentials.token;
-        const expTimestamp = credentials.expiresAt
-          ? Math.floor(credentials.expiresAt / 1000)
+        const expTimestamp = credentials.expires
+          ? Math.floor(credentials.expires / 1000)
           : null;
 
-        window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
         if (expTimestamp) {
-          window.localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
+          localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
         }
 
-        if (window.opener && window.opener.tidalAuthCallback) {
-          window.opener.tidalAuthCallback(accessToken, expTimestamp);
+        setToken(accessToken);
+        setTokenExp(expTimestamp);
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+        if (expTimestamp) {
+          localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
         }
       } else {
         throw new Error("No access token received from Tidal.");
@@ -179,9 +150,7 @@ export const useTidal = () => {
     window.location.reload();
   };
 
-  const hasLoggedIn = useMemo(() => {
-    return !!token && !!user && !hasTokenExpired();
-  }, [token, user, hasTokenExpired]);
+  const hasLoggedIn = useMemo(() => !!token && !!user && !hasTokenExpired(), [token, user, hasTokenExpired]);
 
   const hasRedirectedFromValidPopup = useMemo(() => {
     if (window.opener === null) {
@@ -200,10 +169,22 @@ export const useTidal = () => {
     );
   }, []);
 
+  const fetchCurrentUserInfo = useCallback(async () => {
+    try {
+      // Fetch current user info from Tidal API using the stored client
+      const user = await tidalClient.GET("/users/me");
+      console.log('user', user);
+      
+      return user;
+    } catch (err) {
+      console.error("Failed to fetch current user info:", err);
+      throw err;
+    }
+  }, [tidalClient]);
+
   const loadCurrentUser = useCallback(async () => {
     try {
       const user = await fetchCurrentUserInfo();
-      console.log(user);
 
       setUser(user);
     } catch (err) {
@@ -218,9 +199,9 @@ export const useTidal = () => {
       try {
         await initializeAuth();
         
-        const accessToken = window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        const expTimestamp = window.localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
-          ? parseInt(window.localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
+        const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+        const expTimestamp = localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
+          ? parseInt(localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
           : null;
 
         if (accessToken) {
@@ -232,13 +213,14 @@ export const useTidal = () => {
           // Try to get credentials from Tidal SDK
           try {
             const credentials = await auth.credentialsProvider.getCredentials();
+            console.log('credentials', credentials);
             if (credentials?.token) {
               setToken(credentials.token);
-              if (credentials.expiresAt) {
-                const expTimestamp = Math.floor(credentials.expiresAt / 1000);
+              if (credentials.expires) {
+                const expTimestamp = Math.floor(credentials.expires / 1000);
                 setTokenExp(expTimestamp);
-                window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, credentials.token);
-                window.localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
+                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, credentials.token);
+                localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
               }
             } else {
               setIsLoading(false);
@@ -276,5 +258,6 @@ export const useTidal = () => {
     hasLoggedIn,
     hasRedirectedFromValidPopup,
     storeTokenAtRedirect,
+    tidalClient,
   };
 };

@@ -1,13 +1,17 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useTidal } from "../hooks/useTidal";
 import { useNavigate } from "react-router-dom";
 
 const TidalRedirect = () => {
   const { hasLoggedIn, storeTokenAtRedirect } = useTidal();
   const navigate = useNavigate();
+  const hasCalledStore = useRef(false);
 
   useEffect(() => {
-    storeTokenAtRedirect();
+    if (!hasCalledStore.current) {
+      hasCalledStore.current = true;
+      void storeTokenAtRedirect();
+    }
   }, [storeTokenAtRedirect]);
 
   useEffect(() => {

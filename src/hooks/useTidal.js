@@ -29,11 +29,14 @@ const STORAGE_KEYS = {
   REFRESH_TOKEN: "TIDAL_REFRESH_TOKEN",
 };
 
+let initDone = false;
+
 export const useTidal = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [tokenExp, setTokenExp] = useState(null);
+  const [finalizeDone, setFinalizeDone] = useState(false);
 
   const navigate = useNavigate();
 
@@ -42,17 +45,20 @@ export const useTidal = () => {
     return createAPIClient(auth.credentialsProvider);
   }, []);
 
-  const initializeAuth = async () => {
+  const initializeAuth = useCallback(async () => {
     try {
+      if (!initDone) {
+        initDone = true;
         await auth.init({
           clientId: REACT_APP_TIDAL_CLIENT_ID,
           credentialsStorageKey: "authorizationCode",
-          scopes: [REACT_APP_TIDAL_SCOPES],
+          scopes: REACT_APP_TIDAL_SCOPES,
         });
+      }
     } catch (err) {
       console.error("Failed to initialize Tidal auth:", err);
     }
-  };
+  }, []);
 
   const invalidateToken = useCallback(() => {
     try {
@@ -111,9 +117,11 @@ export const useTidal = () => {
     }
   };
 
-  const storeTokenAtRedirect = async () => {
+  const storeTokenAtRedirect = useCallback(async () => {
+    if (finalizeDone) return;
     try {
       await initializeAuth();
+      setFinalizeDone(true);
       await auth.finalizeLogin(window.location.search);
 
       const credentials = await auth.credentialsProvider.getCredentials();
@@ -142,7 +150,7 @@ export const useTidal = () => {
       console.error(err);
       throw new Error(`Could not store token information in local storage.`);
     }
-  };
+  }, [finalizeDone, initializeAuth]);
 
   const logout = () => {
     invalidateToken();
@@ -171,16 +179,14 @@ export const useTidal = () => {
 
   const fetchCurrentUserInfo = useCallback(async () => {
     try {
-      // Fetch current user info from Tidal API using the stored client
-      const user = await tidalClient.GET("/users/me");
-      console.log('user', user);
-      
-      return user;
+      const tidalClient = createAPIClient(auth.credentialsProvider);
+
+      return await tidalClient.GET("/users/me");
     } catch (err) {
       console.error("Failed to fetch current user info:", err);
       throw err;
     }
-  }, [tidalClient]);
+  }, []);
 
   const loadCurrentUser = useCallback(async () => {
     try {
@@ -195,53 +201,9 @@ export const useTidal = () => {
   }, [navigate, fetchCurrentUserInfo]);
 
   useEffect(() => {
-    const loadToken = async () => {
-      try {
-        await initializeAuth();
-        
-        const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        const expTimestamp = localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
-          ? parseInt(localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
-          : null;
-
-        if (accessToken) {
-          setToken(accessToken);
-          if (expTimestamp && Number.isInteger(expTimestamp)) {
-            setTokenExp(expTimestamp);
-          }
-        } else {
-          // Try to get credentials from Tidal SDK
-          try {
-            const credentials = await auth.credentialsProvider.getCredentials();
-            console.log('credentials', credentials);
-            if (credentials?.token) {
-              setToken(credentials.token);
-              if (credentials.expires) {
-                const expTimestamp = Math.floor(credentials.expires / 1000);
-                setTokenExp(expTimestamp);
-                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, credentials.token);
-                localStorage.setItem(STORAGE_KEYS.EXP_TIMESTAMP, expTimestamp);
-              }
-            } else {
-              setIsLoading(false);
-            }
-          } catch (err) {
-            setIsLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        setIsLoading(false);
-      }
-    };
-
-    loadToken();
-  }, []);
-
-  useEffect(() => {
     if (token) {
       if (!user) {
-        loadCurrentUser();
+        void loadCurrentUser();
       } else {
         setIsLoading(false);
       }

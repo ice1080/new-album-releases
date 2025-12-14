@@ -20,13 +20,14 @@ export default function Home() {
   const [topArtists, setTopArtists] = useState([]);
   const [savedAlbumArtists, setSavedAlbumArtists] = useState([]);
   const [recentAlbums, setRecentAlbums] = useState([]);
-  const [addSavedToQuery, setAddSavedToQuery] = useState(false);
+  // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
+  const [addSavedToQuery, setAddSavedToQuery] = useState(true);
   const [showMySavedAlbums, setShowMySavedAlbums] = useState(true);
   const [currentView, setCurrentView] = useState(ALBUMS_VIEW);
   const [isLoading, setIsLoading] = useState(true);
   const [apiCount, setApiCount] = useState(0);
 
-  const { tidalClient, hasLoggedIn } = useTidal();
+  const { tidalClient, user, hasLoggedIn } = useTidal();
 
   const incrementApiCount = useCallback(() => {
     setApiCount((prevCount) => prevCount + 1);
@@ -63,21 +64,21 @@ export default function Home() {
   // };
 
   const getAllSavedAlbums = useCallback(() => {
-    console.log("getAllSavedAlbums");
-    if (addSavedToQuery && tidalClient) {
+    if (addSavedToQuery && tidalClient && hasLoggedIn) {
+      console.log("getAllSavedAlbums");
       // TODO add sleep here?
       setIsLoading(true);
       let albumPromises = [];
       const maxLimit = MAX_SAVED_ALBUMS / 50;
-      for (let i = 0; i < maxLimit; i++) {
-        incrementApiCount();
-        const offset = i * SAVED_ALBUMS_LIMIT;
-        const limit = 50;
-        // Tidal API endpoint for favorite albums with pagination
-        albumPromises.push(
-          tidalClient.GET(`/users/me/favorites/albums?limit=${limit}&offset=${offset}`)
-        );
-      }
+      albumPromises.push(
+        tidalClient.GET(`/userCollections/${user.id}?include=albums`)
+      );
+      // for (let i = 0; i < maxLimit; i++) {
+      //   incrementApiCount();
+      //   const offset = i * SAVED_ALBUMS_LIMIT;
+      //   const limit = 50;
+      //   // Tidal API endpoint for favorite albums with pagination
+      // }
       Promise.all(albumPromises).then((albumsList) => {
         let localSavedAlbums = [];
         albumsList.forEach((values) => {
@@ -143,7 +144,7 @@ export default function Home() {
         setIsLoading(false);
       });
     }
-  }, [addSavedToQuery, tidalClient, incrementApiCount]);
+  }, [addSavedToQuery, tidalClient, user]);
 
   // const addSavedAlbums = async () => {
   //   console.log("addSavedAlbums");

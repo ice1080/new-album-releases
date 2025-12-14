@@ -150,7 +150,7 @@ export const useTidal = () => {
     try {
       const user = await fetchCurrentUserInfo();
 
-      setUser(user);
+      setUser(user.data.data);
     } catch (err) {
       console.error(err);
 
@@ -192,6 +192,8 @@ export const useTidal = () => {
   }, [token, user, loadCurrentUser]);
 
   const hasLoggedIn = useMemo(() => !!token && !!user && !hasTokenExpired(), [token, user, hasTokenExpired]);
+
+  // todo create a wrapper around tidalClient that has all the methods you want
 
   return {
     user,

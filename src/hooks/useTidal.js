@@ -60,24 +60,6 @@ export const useTidal = () => {
     }
   }, []);
 
-  const invalidateToken = useCallback(() => {
-    try {
-      Object.values(STORAGE_KEYS).forEach((key) => {
-        localStorage.removeItem(key);
-      });
-      // Clear credentials from Tidal SDK if method exists
-      if (auth.credentialsProvider && typeof auth.credentialsProvider.clearCredentials === 'function') {
-        auth.credentialsProvider.clearCredentials();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-
-    setUser(null);
-    setToken(null);
-    setTokenExp(null);
-  }, []);
-
   const hasTokenExpired = useCallback(() => {
     try {
       const accessToken =
@@ -110,7 +92,7 @@ export const useTidal = () => {
       await initializeAuth();
 
       const loginUrl = await auth.initializeLogin({ redirectUri: REACT_APP_TIDAL_REDIRECT_URI });
-      
+
       window.open(loginUrl, "_self");
     } catch (err) {
       console.error("Login failed:", err);
@@ -152,41 +134,17 @@ export const useTidal = () => {
     }
   }, [finalizeDone, initializeAuth]);
 
-  const logout = () => {
-    invalidateToken();
-
-    window.location.reload();
-  };
-
-  const hasLoggedIn = useMemo(() => !!token && !!user && !hasTokenExpired(), [token, user, hasTokenExpired]);
-
-  const hasRedirectedFromValidPopup = useMemo(() => {
-    if (window.opener === null) {
-      return false;
-    }
-
-    const { hostname: openerHostname } = new URL(window.opener.location.href);
-    const { hostname } = new URL(window.location.href);
-
-    return (
-      window.opener &&
-      window.opener !== window &&
-      !!window.opener.tidalAuthCallback &&
-      openerHostname === hostname &&
-      window.history.length >= 2
-    );
-  }, []);
-
   const fetchCurrentUserInfo = useCallback(async () => {
     try {
-      const tidalClient = createAPIClient(auth.credentialsProvider);
-
+      if (!tidalClient) {
+        throw new Error("Tidal client not initialized");
+      }
       return await tidalClient.GET("/users/me");
     } catch (err) {
       console.error("Failed to fetch current user info:", err);
       throw err;
     }
-  }, []);
+  }, [tidalClient]);
 
   const loadCurrentUser = useCallback(async () => {
     try {
@@ -200,6 +158,27 @@ export const useTidal = () => {
     }
   }, [navigate, fetchCurrentUserInfo]);
 
+  // Initialize token from localStorage on mount
+  useEffect(() => {
+    try {
+      const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const expTimestamp = localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP)
+        ? parseInt(localStorage.getItem(STORAGE_KEYS.EXP_TIMESTAMP), 10)
+        : null;
+
+      if (accessToken && !token) {
+        console.log('initializing token from localStorage');
+        setToken(accessToken);
+        setTokenExp(expTimestamp);
+        console.log('token initialized from localStorage via setToken');
+      } else if (!accessToken && token) {
+        console.warn('WARNING: localStorage has no token but state has token. Token may have been cleared externally.');
+      }
+    } catch (err) {
+      console.error("Failed to initialize token from localStorage:", err);
+    }
+  }, []); // Only run on mount
+
   useEffect(() => {
     if (token) {
       if (!user) {
@@ -212,13 +191,13 @@ export const useTidal = () => {
     }
   }, [token, user, loadCurrentUser]);
 
+  const hasLoggedIn = useMemo(() => !!token && !!user && !hasTokenExpired(), [token, user, hasTokenExpired]);
+
   return {
     user,
     login,
-    logout,
     isLoading,
     hasLoggedIn,
-    hasRedirectedFromValidPopup,
     storeTokenAtRedirect,
     tidalClient,
   };

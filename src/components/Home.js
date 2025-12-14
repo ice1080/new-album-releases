@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useDeezer } from "../hooks/useDeezer";
+import { useTidal } from "../hooks/useTidal";
 import RecentAlbumReleases from "./RecentAlbumReleases";
 import TopArtists from "./TopArtists";
 import LoadingIcon from "./LoadingIcon";
@@ -24,6 +25,12 @@ export default function Home() {
   const [currentView, setCurrentView] = useState(ALBUMS_VIEW);
   const [isLoading, setIsLoading] = useState(true);
   const [apiCount, setApiCount] = useState(0);
+
+  const { tidalClient, hasLoggedIn } = useTidal();
+
+  const incrementApiCount = useCallback(() => {
+    setApiCount((prevCount) => prevCount + 1);
+  }, []);
 
   // const getAllTopArtists = () => {
   //   console.log("getAllTopArtists");
@@ -55,80 +62,88 @@ export default function Home() {
   //   });
   // };
 
-  // const getAllSavedAlbums = () => {
-  //   console.log("getAllSavedAlbums");
-  //   if (addSavedToQuery) {
-  //     // TODO add sleep here?
-  //     setIsLoading(true);
-  //     let albumPromises = [];
-  //     const maxLimit = MAX_SAVED_ALBUMS / 50;
-  //     for (let i = 0; i < maxLimit; i++) {
-  //       incrementApiCount();
-  //       albumPromises.push(
-  //         spotifyApi.getMySavedAlbums({
-  //           limit: 50,
-  //           offset: i * SAVED_ALBUMS_LIMIT,
-  //         })
-  //       );
-  //     }
-  //     Promise.all(albumPromises).then((albumsList) => {
-  //       let localSavedAlbums = [];
-  //       albumsList.forEach((values) => {
-  //         localSavedAlbums = localSavedAlbums.concat(
-  //           values.items.map((el) => el.album)
-  //         );
-  //       });
-  //       let artistSavedAlbumCount = {};
-  //       let minSavedCountArtists = new Set();
-  //       localSavedAlbums.forEach((album) => {
-  //         album.artists.forEach((artist) => {
-  //           let newCount = 1;
-  //           if (artistSavedAlbumCount[artist.name]) {
-  //             newCount = artistSavedAlbumCount[artist.name].count + 1;
-  //             artistSavedAlbumCount[artist.name].count = newCount;
-  //           } else {
-  //             artistSavedAlbumCount[artist.name] = {
-  //               count: newCount,
-  //               artist: artist,
-  //             };
-  //           }
-  //           if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
-  //             minSavedCountArtists.add(artist);
-  //           }
-  //         });
-  //       });
-  //       /* const filteredTest = Object.keys(artistSavedAlbumCount)
-  //        *   .filter(
-  //        *     (artistName) =>
-  //        *       artistSavedAlbumCount[artistName].count >=
-  //        *       ARTIST_MIN_SAVED_ALBUM_COUNT
-  //        *   )
-  //        *   .reduce(
-  //        *     (res, key) =>
-  //        *       Object.assign(res, { [key]: artistSavedAlbumCount[key] }),
-  //        *     {}
-  //        *   ); */
+  const getAllSavedAlbums = useCallback(() => {
+    console.log("getAllSavedAlbums");
+    if (addSavedToQuery && tidalClient) {
+      // TODO add sleep here?
+      setIsLoading(true);
+      let albumPromises = [];
+      const maxLimit = MAX_SAVED_ALBUMS / 50;
+      for (let i = 0; i < maxLimit; i++) {
+        incrementApiCount();
+        const offset = i * SAVED_ALBUMS_LIMIT;
+        const limit = 50;
+        // Tidal API endpoint for favorite albums with pagination
+        albumPromises.push(
+          tidalClient.GET(`/users/me/favorites/albums?limit=${limit}&offset=${offset}`)
+        );
+      }
+      Promise.all(albumPromises).then((albumsList) => {
+        let localSavedAlbums = [];
+        albumsList.forEach((values) => {
+          // Tidal API returns items directly or in a data/items structure
+          const items = values.items || values.data?.items || values || [];
+          localSavedAlbums = localSavedAlbums.concat(
+            items.map((el) => el.album || el)
+          );
+        });
+        let artistSavedAlbumCount = {};
+        let minSavedCountArtists = new Set();
+        localSavedAlbums.forEach((album) => {
+          // Tidal API may have artists in different structure
+          const artists = album.artists || album.artist || [];
+          artists.forEach((artist) => {
+            const artistName = artist.name || artist;
+            let newCount = 1;
+            if (artistSavedAlbumCount[artistName]) {
+              newCount = artistSavedAlbumCount[artistName].count + 1;
+              artistSavedAlbumCount[artistName].count = newCount;
+            } else {
+              artistSavedAlbumCount[artistName] = {
+                count: newCount,
+                artist: artist,
+              };
+            }
+            if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
+              minSavedCountArtists.add(artist);
+            }
+          });
+        });
+        /* const filteredTest = Object.keys(artistSavedAlbumCount)
+         *   .filter(
+         *     (artistName) =>
+         *       artistSavedAlbumCount[artistName].count >=
+         *       ARTIST_MIN_SAVED_ALBUM_COUNT
+         *   )
+         *   .reduce(
+         *     (res, key) =>
+         *       Object.assign(res, { [key]: artistSavedAlbumCount[key] }),
+         *     {}
+         *   ); */
 
-  //       /* console.log("localSavedAlbums", localSavedAlbums); */
-  //       /* console.log(
-  //        *   "artistSavedAlbumCount",
-  //        *   artistSavedAlbumCount,
-  //        *   Object.keys(artistSavedAlbumCount).length
-  //        * ); */
-  //       /* console.log(
-  //        *   `artists with more than ${ARTIST_MIN_SAVED_ALBUM_COUNT} saved albums`,
-  //        *   filteredTest,
-  //        *   Object.keys(filteredTest).length
-  //        * ); */
-  //       console.log(
-  //         "savedAlbumArtists",
-  //         minSavedCountArtists,
-  //         minSavedCountArtists.size
-  //       );
-  //       setSavedAlbumArtists(Array.from(minSavedCountArtists));
-  //     });
-  //   }
-  // };
+        /* console.log("localSavedAlbums", localSavedAlbums); */
+        /* console.log(
+         *   "artistSavedAlbumCount",
+         *   artistSavedAlbumCount,
+         *   Object.keys(artistSavedAlbumCount).length
+         * ); */
+        /* console.log(
+         *   `artists with more than ${ARTIST_MIN_SAVED_ALBUM_COUNT} saved albums`,
+         *   filteredTest,
+         *   Object.keys(filteredTest).length
+         * ); */
+        console.log(
+          "savedAlbumArtists",
+          minSavedCountArtists,
+          minSavedCountArtists.size
+        );
+        setSavedAlbumArtists(Array.from(minSavedCountArtists));
+      }).catch((error) => {
+        console.error("Error fetching saved albums from Tidal:", error);
+        setIsLoading(false);
+      });
+    }
+  }, [addSavedToQuery, tidalClient, incrementApiCount]);
 
   // const addSavedAlbums = async () => {
   //   console.log("addSavedAlbums");
@@ -251,16 +266,19 @@ export default function Home() {
   //   }
   // };
 
-  // const incrementApiCount = () => {
-  //   setApiCount((prevCount) => prevCount + 1);
-  // };
-
   // useEffect(() => {
   //   if (hasLoggedIn) {
   //     getAllTopArtists();
   //     getAllSavedAlbums();
   //   }
   // }, [getAllSavedAlbums, getAllTopArtists, hasLoggedIn]);
+
+  useEffect(() => {
+    console.log('home - hasLoggedIn change', hasLoggedIn);
+    if (hasLoggedIn) {
+      getAllSavedAlbums();
+    }
+  }, [getAllSavedAlbums, hasLoggedIn]);
 
   // useEffect(() => {
   //   /* console.log("topArtists", topArtists); */
@@ -273,11 +291,11 @@ export default function Home() {
   //   }
   // }, [topArtists, savedAlbumArtists]);
 
-  // useEffect(() => {
-  //   if (addSavedToQuery && savedAlbumArtists.length === 0) {
-  //     getAllSavedAlbums();
-  //   }
-  // }, [addSavedToQuery]);
+  useEffect(() => {
+    if (addSavedToQuery && savedAlbumArtists.length === 0) {
+      getAllSavedAlbums();
+    }
+  }, [addSavedToQuery, savedAlbumArtists.length, getAllSavedAlbums]);
 
   // useEffect(() => {
   //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {

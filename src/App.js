@@ -1,6 +1,5 @@
 import { useEffect } from "react";
-import logo from "./spotifyLogo.svg";
-// TODO change logo to something else
+import logo from "./tidalLogo.svg";
 import "./App.css";
 import { useNavigate } from "react-router-dom";
 import { useTidal } from "./hooks/useTidal";

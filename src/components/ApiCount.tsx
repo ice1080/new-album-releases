@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 
 interface ApiCountProps {
   apiCount: number;
@@ -7,4 +7,3 @@ interface ApiCountProps {
 export default function ApiCount({ apiCount }: ApiCountProps) {
   return <h2>API Count - {apiCount}</h2>;
 }
-

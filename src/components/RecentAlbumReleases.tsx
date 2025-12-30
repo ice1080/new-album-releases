@@ -1,13 +1,13 @@
-import React, { useMemo } from "react";
+import React, { useMemo } from 'react';
 import {
   useReactTable,
   flexRender,
   getCoreRowModel,
   ColumnDef,
-} from "@tanstack/react-table";
-import Favorite from "@mui/icons-material/Favorite";
-import FavoriteBorder from "@mui/icons-material/FavoriteBorder";
-import QuestionMark from "@mui/icons-material/QuestionMark";
+} from '@tanstack/react-table';
+import Favorite from '@mui/icons-material/Favorite';
+import FavoriteBorder from '@mui/icons-material/FavoriteBorder';
+import QuestionMark from '@mui/icons-material/QuestionMark';
 
 interface AlbumImage {
   url: string;
@@ -35,7 +35,9 @@ interface RecentAlbumReleasesProps {
   recentAlbums: Album[];
 }
 
-export default function RecentAlbumReleases({ recentAlbums }: RecentAlbumReleasesProps) {
+export default function RecentAlbumReleases({
+  recentAlbums,
+}: RecentAlbumReleasesProps) {
   const getImageHref = (info: Album): string | undefined => {
     if (info.images && info.images.length) {
       return info.images[0].url;
@@ -47,7 +49,7 @@ export default function RecentAlbumReleases({ recentAlbums }: RecentAlbumRelease
     // todo handle onClick
     const value = props.getValue() as boolean | undefined;
     /* console.log("value", value); */
-    const sx = { color: "green" };
+    const sx = { color: 'green' };
     if (value === undefined) {
       return <QuestionMark />;
     } else if (value) {
@@ -57,37 +59,49 @@ export default function RecentAlbumReleases({ recentAlbums }: RecentAlbumRelease
     }
   };
 
-  const columns = useMemo<ColumnDef<Album>[]>(() => [
-    {
-      header: "Image",
-      accessorFn: getImageHref,
-      cell: (props) => <img className={"albumImage"} src={props.getValue() as string} alt="" />,
-    },
-    {
-      header: "Artist",
-      accessorKey: "artistName",
-    },
-    {
-      header: "Album Name",
-      accessorKey: "name",
-    },
-    {
-      header: "Date Released",
-      accessorKey: "release_date",
-      cell: (props) =>
-        new Date(Date.parse(props.getValue() as string)).toLocaleDateString("en-us", {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-        }),
-    },
-    {
-      header: "Saved",
-      accessorKey: "isAlbumSaved",
-      cell: getSavedCell,
-    },
-  ], []);
-  
+  const columns = useMemo<ColumnDef<Album>[]>(
+    () => [
+      {
+        header: 'Image',
+        accessorFn: getImageHref,
+        cell: (props) => (
+          <img
+            className={'albumImage'}
+            src={props.getValue() as string}
+            alt=""
+          />
+        ),
+      },
+      {
+        header: 'Artist',
+        accessorKey: 'artistName',
+      },
+      {
+        header: 'Album Name',
+        accessorKey: 'name',
+      },
+      {
+        header: 'Date Released',
+        accessorKey: 'release_date',
+        cell: (props) =>
+          new Date(Date.parse(props.getValue() as string)).toLocaleDateString(
+            'en-us',
+            {
+              year: 'numeric',
+              month: 'short',
+              day: '2-digit',
+            }
+          ),
+      },
+      {
+        header: 'Saved',
+        accessorKey: 'isAlbumSaved',
+        cell: getSavedCell,
+      },
+    ],
+    []
+  );
+
   const tableOptions = {
     columns,
     data: recentAlbums,
@@ -133,4 +147,3 @@ export default function RecentAlbumReleases({ recentAlbums }: RecentAlbumRelease
     </>
   );
 }
-

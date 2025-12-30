@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { useSpotify } from "../hooks/useSpotify";
+import React, { useEffect } from 'react';
+import { useSpotify } from '../hooks/useSpotify';
 
 const SpotifyRedirect = () => {
   const { storeTokenAtRedirect } = useSpotify();
@@ -12,4 +12,3 @@ const SpotifyRedirect = () => {
 };
 
 export default SpotifyRedirect;
-

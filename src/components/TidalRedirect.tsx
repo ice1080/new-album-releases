@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from "react";
-import { useTidal } from "../hooks/useTidal";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useRef } from 'react';
+import { useTidal } from '../hooks/useTidal';
+import { useNavigate } from 'react-router-dom';
 
 const TidalRedirect = () => {
   const { hasLoggedIn, storeTokenAtRedirect } = useTidal();
@@ -16,7 +16,7 @@ const TidalRedirect = () => {
 
   useEffect(() => {
     if (hasLoggedIn) {
-      navigate("/home");
+      navigate('/home');
     }
   }, [hasLoggedIn, navigate]);
 
@@ -24,4 +24,3 @@ const TidalRedirect = () => {
 };
 
 export default TidalRedirect;
-

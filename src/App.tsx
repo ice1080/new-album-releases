@@ -1,8 +1,8 @@
-import { useEffect } from "react";
-import logo from "./tidalLogo.svg";
-import "./App.css";
-import { useNavigate } from "react-router-dom";
-import { useTidal } from "./hooks/useTidal";
+import { useEffect } from 'react';
+import logo from './tidalLogo.svg';
+import './App.css';
+import { useNavigate } from 'react-router-dom';
+import { useTidal } from './hooks/useTidal';
 
 export default function App() {
   const { hasLoggedIn, login } = useTidal();
@@ -10,7 +10,7 @@ export default function App() {
 
   useEffect(() => {
     if (hasLoggedIn) {
-      navigate("/home");
+      navigate('/home');
     }
   }, [hasLoggedIn, navigate]);
 
@@ -23,7 +23,7 @@ export default function App() {
       <button autoFocus onClick={login}>
         Login
       </button>
-      <div>hasLoggedIn: {"" + hasLoggedIn}</div>
+      <div>hasLoggedIn: {'' + hasLoggedIn}</div>
     </div>
   );
 }

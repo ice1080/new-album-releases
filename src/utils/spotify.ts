@@ -1,8 +1,8 @@
 export const generateState = (length: number): string => {
-  let text = "";
+  let text = '';
 
   const possible =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   for (let i = 0; i < length; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
@@ -20,7 +20,7 @@ export const buildSpotifyQueryString = (queryParams: QueryParams): string => {
     .filter((key) => {
       const value = queryParams[key];
 
-      return typeof value !== "undefined" && value !== null;
+      return typeof value !== 'undefined' && value !== null;
     })
     .map((key) => {
       const value = queryParams[key];
@@ -28,11 +28,10 @@ export const buildSpotifyQueryString = (queryParams: QueryParams): string => {
       if (Array.isArray(value)) {
         return value
           .map((valueItem) => `${key}=${encodeURIComponent(valueItem)}`)
-          .join("&");
+          .join('&');
       }
 
       return `${key}=${encodeURIComponent(String(value))}`;
     })
-    .join("&");
+    .join('&');
 };
-

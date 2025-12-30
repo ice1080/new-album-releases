@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 
 interface Artist {
   name: string;
@@ -22,4 +22,3 @@ export default function TopArtists({ topArtists }: TopArtistsProps) {
     </>
   );
 }
-

@@ -3,21 +3,49 @@ import {
   useReactTable,
   flexRender,
   getCoreRowModel,
+  ColumnDef,
 } from "@tanstack/react-table";
 import Favorite from "@mui/icons-material/Favorite";
 import FavoriteBorder from "@mui/icons-material/FavoriteBorder";
 import QuestionMark from "@mui/icons-material/QuestionMark";
 
-export default function RecentAlbumReleases({ recentAlbums }) {
-  const getImageHref = (info) => {
+interface AlbumImage {
+  url: string;
+  height?: number;
+  width?: number;
+}
+
+interface AlbumArtist {
+  name: string;
+  id?: string;
+  [key: string]: unknown;
+}
+
+interface Album {
+  images?: AlbumImage[];
+  artistName?: string;
+  name: string;
+  release_date: string;
+  isAlbumSaved?: boolean;
+  id?: string;
+  [key: string]: unknown;
+}
+
+interface RecentAlbumReleasesProps {
+  recentAlbums: Album[];
+}
+
+export default function RecentAlbumReleases({ recentAlbums }: RecentAlbumReleasesProps) {
+  const getImageHref = (info: Album): string | undefined => {
     if (info.images && info.images.length) {
       return info.images[0].url;
     }
+    return undefined;
   };
 
-  const getSavedCell = (props) => {
+  const getSavedCell = (props: { getValue: () => unknown }) => {
     // todo handle onClick
-    const value = props.getValue();
+    const value = props.getValue() as boolean | undefined;
     /* console.log("value", value); */
     const sx = { color: "green" };
     if (value === undefined) {
@@ -29,11 +57,11 @@ export default function RecentAlbumReleases({ recentAlbums }) {
     }
   };
 
-  const columns = useMemo(() => [
+  const columns = useMemo<ColumnDef<Album>[]>(() => [
     {
       header: "Image",
       accessorFn: getImageHref,
-      cell: (props) => <img className={"albumImage"} src={props.getValue()} />,
+      cell: (props) => <img className={"albumImage"} src={props.getValue() as string} alt="" />,
     },
     {
       header: "Artist",
@@ -47,7 +75,7 @@ export default function RecentAlbumReleases({ recentAlbums }) {
       header: "Date Released",
       accessorKey: "release_date",
       cell: (props) =>
-        new Date(Date.parse(props.getValue())).toLocaleDateString("en-us", {
+        new Date(Date.parse(props.getValue() as string)).toLocaleDateString("en-us", {
           year: "numeric",
           month: "short",
           day: "2-digit",
@@ -58,7 +86,8 @@ export default function RecentAlbumReleases({ recentAlbums }) {
       accessorKey: "isAlbumSaved",
       cell: getSavedCell,
     },
-  ]);
+  ], []);
+  
   const tableOptions = {
     columns,
     data: recentAlbums,
@@ -72,13 +101,13 @@ export default function RecentAlbumReleases({ recentAlbums }) {
   return (
     <>
       <h1>Recent Album Releases ({recentAlbums.length} total)</h1>
-      {recentAlbums && recentAlbums.length && (
+      {recentAlbums && recentAlbums.length > 0 && (
         <table>
           <thead>
             {tableInstance.getHeaderGroups().map((headerGroup) => (
-              <tr {...headerGroup.props} key={headerGroup.id}>
+              <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th {...header.props} key={header.id}>
+                  <th key={header.id}>
                     {flexRender(
                       header.column.columnDef.header,
                       header.getContext()
@@ -104,3 +133,4 @@ export default function RecentAlbumReleases({ recentAlbums }) {
     </>
   );
 }
+

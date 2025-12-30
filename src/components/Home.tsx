@@ -1,37 +1,50 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
-import { useDeezer } from "../hooks/useDeezer";
+import React, { useEffect, useState, useCallback } from "react";
 import { useTidal } from "../hooks/useTidal";
-import RecentAlbumReleases from "./RecentAlbumReleases";
 import TopArtists from "./TopArtists";
 import LoadingIcon from "./LoadingIcon";
 import ApiCount from "./ApiCount";
 
+interface Artist {
+  name: string;
+  id?: string;
+  [key: string]: unknown;
+}
+
+interface Album {
+  images?: Array<{ url: string }>;
+  artistName?: string;
+  name: string;
+  release_date: string;
+  isAlbumSaved?: boolean;
+  id?: string;
+  artists?: Artist[];
+  artist?: Artist | Artist[];
+  [key: string]: unknown;
+}
+
+interface TidalAlbumResponse {
+  items?: Album[];
+  data?: {
+    items?: Album[];
+  };
+}
+
 export default function Home() {
   const ARTISTS_VIEW = "artists";
   const ALBUMS_VIEW = "albums";
-  const CUTOFF_DAYS_AGO = 250;
-  const MAX_ARTISTS_LIMIT = 101;
-  const MAX_SAVED_ALBUMS = 2000;
-  const TOP_ARTISTS_LIMIT = 49;
-  const SAVED_ALBUMS_LIMIT = 50;
+  // const MAX_SAVED_ALBUMS = 2000;
   const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
-  let CUTOFF_DATE;
 
-  const [topArtists, setTopArtists] = useState([]);
-  const [savedAlbumArtists, setSavedAlbumArtists] = useState([]);
-  const [recentAlbums, setRecentAlbums] = useState([]);
+  const [topArtists] = useState<Artist[]>([]);
+  const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
   // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
-  const [addSavedToQuery, setAddSavedToQuery] = useState(true);
-  const [showMySavedAlbums, setShowMySavedAlbums] = useState(true);
-  const [currentView, setCurrentView] = useState(ALBUMS_VIEW);
-  const [isLoading, setIsLoading] = useState(true);
-  const [apiCount, setApiCount] = useState(0);
+  const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
+  const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
+  const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [apiCount] = useState<number>(0);
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
-
-  const incrementApiCount = useCallback(() => {
-    setApiCount((prevCount) => prevCount + 1);
-  }, []);
 
   // const getAllTopArtists = () => {
   //   console.log("getAllTopArtists");
@@ -64,15 +77,20 @@ export default function Home() {
   // };
 
   const getAllSavedAlbums = useCallback(() => {
-    if (addSavedToQuery && tidalClient && hasLoggedIn) {
+    if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
       console.log("getAllSavedAlbums");
       // TODO add sleep here?
       setIsLoading(true);
-      let albumPromises = [];
-      const maxLimit = MAX_SAVED_ALBUMS / 50;
+      const albumPromises: Promise<TidalAlbumResponse>[] = [];
       albumPromises.push(
-        tidalClient.GET(`/userCollections/${user.id}?include=albums`)
+        tidalClient.GET(`/userCollections/${user.id}?include=albums`) as Promise<TidalAlbumResponse>
       );
+      albumPromises.push(
+        tidalClient.GET(`/userCollections/${user.id}/relationships/albums?include=albums`) as Promise<TidalAlbumResponse>
+      );
+      // TODO will have to use the cursor returned from each, unless there's a way to paginate?
+      // TODO try out the api on their page using the auth method instead of wasting time in here
+
       // for (let i = 0; i < maxLimit; i++) {
       //   incrementApiCount();
       //   const offset = i * SAVED_ALBUMS_LIMIT;
@@ -80,21 +98,21 @@ export default function Home() {
       //   // Tidal API endpoint for favorite albums with pagination
       // }
       Promise.all(albumPromises).then((albumsList) => {
-        let localSavedAlbums = [];
+        let localSavedAlbums: Album[] = [];
         albumsList.forEach((values) => {
           // Tidal API returns items directly or in a data/items structure
-          const items = values.items || values.data?.items || values || [];
+          const items = values.items || values.data?.items || [];
           localSavedAlbums = localSavedAlbums.concat(
-            items.map((el) => el.album || el)
+            items.map((el) => (el.album || el) as Album)
           );
         });
-        let artistSavedAlbumCount = {};
-        let minSavedCountArtists = new Set();
+        const artistSavedAlbumCount: Record<string, { count: number; artist: Artist }> = {};
+        const minSavedCountArtists = new Set<Artist>();
         localSavedAlbums.forEach((album) => {
           // Tidal API may have artists in different structure
-          const artists = album.artists || album.artist || [];
+          const artists = album.artists || (Array.isArray(album.artist) ? album.artist : album.artist ? [album.artist] : []);
           artists.forEach((artist) => {
-            const artistName = artist.name || artist;
+            const artistName = (artist as Artist).name || String(artist);
             let newCount = 1;
             if (artistSavedAlbumCount[artistName]) {
               newCount = artistSavedAlbumCount[artistName].count + 1;
@@ -102,11 +120,11 @@ export default function Home() {
             } else {
               artistSavedAlbumCount[artistName] = {
                 count: newCount,
-                artist: artist,
+                artist: artist as Artist,
               };
             }
             if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
-              minSavedCountArtists.add(artist);
+              minSavedCountArtists.add(artist as Artist);
             }
           });
         });
@@ -144,7 +162,7 @@ export default function Home() {
         setIsLoading(false);
       });
     }
-  }, [addSavedToQuery, tidalClient, user]);
+  }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
   // const addSavedAlbums = async () => {
   //   console.log("addSavedAlbums");
@@ -332,6 +350,7 @@ export default function Home() {
         </>
       );
     }
+    return null;
   };
 
   const renderViewSelector = () => {
@@ -357,3 +376,4 @@ export default function Home() {
     </>
   );
 }
+

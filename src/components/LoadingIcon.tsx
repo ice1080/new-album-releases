@@ -1,7 +1,7 @@
 import React from "react";
 import spinner from "../assets/spinner.gif";
 
-export default function LoadingIcon({ isLoading }) {
+export default function LoadingIcon({ isLoading }: {isLoading: boolean;}) {
   return isLoading ? (
     <div
       style={{
@@ -18,6 +18,6 @@ export default function LoadingIcon({ isLoading }) {
       <img src={spinner} alt="loading..." />
     </div>
   ) : (
-    ""
+    null
   );
 }

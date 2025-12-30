@@ -1,4 +1,4 @@
-export const generateState = (length) => {
+export const generateState = (length: number): string => {
   let text = "";
 
   const possible =
@@ -11,7 +11,11 @@ export const generateState = (length) => {
   return text;
 };
 
-export const buildSpotifyQueryString = (queryParams) => {
+interface QueryParams {
+  [key: string]: string | string[] | number | undefined | null;
+}
+
+export const buildSpotifyQueryString = (queryParams: QueryParams): string => {
   return Object.keys(queryParams)
     .filter((key) => {
       const value = queryParams[key];
@@ -27,7 +31,8 @@ export const buildSpotifyQueryString = (queryParams) => {
           .join("&");
       }
 
-      return `${key}=${encodeURIComponent(value)}`;
+      return `${key}=${encodeURIComponent(String(value))}`;
     })
     .join("&");
 };
+

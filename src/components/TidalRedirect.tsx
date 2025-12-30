@@ -24,3 +24,4 @@ const TidalRedirect = () => {
 };
 
 export default TidalRedirect;
+

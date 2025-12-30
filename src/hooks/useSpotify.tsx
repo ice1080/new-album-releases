@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildSpotifyQueryString, generateState } from "../utils/spotify";
 import SpotifyWebApi from "spotify-web-api-js";
@@ -30,9 +30,37 @@ const LS_KEYS = {
   TOKEN_TYPE: "SPOTIFY_TOKEN_TYPE",
 };
 
-const spotifyContext = createContext();
+interface SpotifyUser {
+  id: string;
+  display_name?: string;
+  email?: string;
+  [key: string]: unknown;
+}
 
-export const SpotifyProvider = ({ children }) => {
+interface SpotifyContextValue {
+  user: SpotifyUser | null;
+  login: () => void;
+  logout: () => void;
+  isLoading: boolean;
+  hasLoggedIn: boolean;
+  hasRedirectedFromValidPopup: boolean;
+  storeTokenAtRedirect: () => void;
+  spotifyApi: SpotifyWebApi.SpotifyWebApiJs;
+  fetchCurrentUserInfo: () => Promise<SpotifyUser>;
+  fetchSearchResults: (params: {
+    query: string;
+    type?: string;
+    limit?: number;
+  }) => Promise<unknown>;
+}
+
+const spotifyContext = createContext<SpotifyContextValue | undefined>(undefined);
+
+interface SpotifyProviderProps {
+  children: ReactNode;
+}
+
+export const SpotifyProvider = ({ children }: SpotifyProviderProps) => {
   const spotify = useProvideSpotify();
 
   return (
@@ -42,19 +70,28 @@ export const SpotifyProvider = ({ children }) => {
   );
 };
 
-export const useSpotify = () => {
-  return useContext(spotifyContext);
+export const useSpotify = (): SpotifyContextValue => {
+  const context = useContext(spotifyContext);
+  if (context === undefined) {
+    throw new Error("useSpotify must be used within a SpotifyProvider");
+  }
+  return context;
 };
 
-const useProvideSpotify = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [tokenExp, setTokenExp] = useState(null);
+interface CallEndpointParams {
+  path: string;
+  method?: string;
+}
+
+const useProvideSpotify = (): SpotifyContextValue => {
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<SpotifyUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenExp, setTokenExp] = useState<number | null>(null);
 
   const navigate = useNavigate();
 
-  const callEndpoint = async ({ path, method = "GET" }) => {
+  const callEndpoint = async ({ path, method = "GET" }: CallEndpointParams): Promise<unknown> => {
     if (hasTokenExpired()) {
       invalidateToken();
 
@@ -71,37 +108,41 @@ const useProvideSpotify = () => {
     ).json();
   };
 
-  const fetchCurrentUserInfo = async () => {
-    return await callEndpoint({ path: "/me", token });
+  const fetchCurrentUserInfo = async (): Promise<SpotifyUser> => {
+    return await callEndpoint({ path: "/me" }) as SpotifyUser;
   };
 
   const fetchSearchResults = async ({
     query,
     type = "album,artist,playlist,track,show,episode",
     limit = 20,
-  }) => {
+  }: {
+    query: string;
+    type?: string;
+    limit?: number;
+  }): Promise<unknown> => {
     const qs = buildSpotifyQueryString({
       q: query,
       type,
       limit,
     });
 
-    return await callEndpoint({ path: `/search?${qs}`, token });
+    return await callEndpoint({ path: `/search?${qs}` });
   };
 
-  const login = () => {
+  const login = (): void => {
     const popup = window.open(
       `https://accounts.spotify.com/authorize?client_id=${REACT_APP_SPOTIFY_RELEASE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
-        REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI
+        REACT_APP_SPOTIFY_RELEASE_REDIRECT_URI || ""
       )}&scope=${encodeURIComponent(
-        REACT_APP_SPOTIFY_RELEASE_SCOPES
+        REACT_APP_SPOTIFY_RELEASE_SCOPES || ""
       )}&response_type=token&state=${generateState(16)}&show_dialog=true`,
       "Login with Spotify",
       "width=600,height=800"
     );
 
-    window.spotifyAuthCallback = async (accessToken, expTimestamp) => {
-      popup.close();
+    (window as Window & { spotifyAuthCallback?: (accessToken: string, expTimestamp: number) => void }).spotifyAuthCallback = async (accessToken: string, expTimestamp: number) => {
+      popup?.close();
 
       setToken(accessToken);
       setTokenExp(expTimestamp);
@@ -109,21 +150,24 @@ const useProvideSpotify = () => {
     };
   };
 
-  const storeTokenAtRedirect = () => {
+  const storeTokenAtRedirect = (): void => {
     const searchParams = new URLSearchParams(window.location.hash.substring(1));
 
     try {
       const accessToken = searchParams.get("access_token");
-      const expiresIn = parseInt(searchParams.get("expires_in"), 10);
+      const expiresIn = parseInt(searchParams.get("expires_in") || "0", 10);
       const tokenType = searchParams.get("token_type");
 
       const expTimestamp = Math.floor(Date.now() / 1000 + expiresIn); // In seconds.
 
-      window.localStorage.setItem(LS_KEYS.ACCESS_TOKEN, accessToken);
-      window.localStorage.setItem(LS_KEYS.EXP_TIMESTAMP, expTimestamp);
-      window.localStorage.setItem(LS_KEYS.TOKEN_TYPE, tokenType);
+      window.localStorage.setItem(LS_KEYS.ACCESS_TOKEN, accessToken || "");
+      window.localStorage.setItem(LS_KEYS.EXP_TIMESTAMP, String(expTimestamp));
+      window.localStorage.setItem(LS_KEYS.TOKEN_TYPE, tokenType || "");
 
-      window.opener.spotifyAuthCallback(accessToken, expTimestamp);
+      const opener = window.opener as (Window & { spotifyAuthCallback?: (accessToken: string, expTimestamp: number) => void }) | null;
+      if (opener?.spotifyAuthCallback && accessToken) {
+        opener.spotifyAuthCallback(accessToken, expTimestamp);
+      }
     } catch (err) {
       console.error(err);
 
@@ -131,7 +175,7 @@ const useProvideSpotify = () => {
     }
   };
 
-  const invalidateToken = () => {
+  const invalidateToken = (): void => {
     try {
       Object.values(LS_KEYS).forEach((key) => {
         window.localStorage.removeItem(key);
@@ -145,19 +189,19 @@ const useProvideSpotify = () => {
     setTokenExp(null);
   };
 
-  const logout = () => {
+  const logout = (): void => {
     invalidateToken();
 
     window.location.reload();
   };
 
-  const hasTokenExpired = () => {
+  const hasTokenExpired = (): boolean => {
     try {
       const accessToken =
         token || window.localStorage.getItem(LS_KEYS.ACCESS_TOKEN);
       const expTimestamp =
         tokenExp ||
-        parseInt(window.localStorage.getItem(LS_KEYS.EXP_TIMESTAMP), 10);
+        parseInt(window.localStorage.getItem(LS_KEYS.EXP_TIMESTAMP) || "0", 10);
 
       if (!accessToken || !expTimestamp || isNaN(expTimestamp)) {
         return false;
@@ -171,28 +215,33 @@ const useProvideSpotify = () => {
     }
   };
 
-  const hasLoggedIn = () => {
+  const hasLoggedIn = (): boolean => {
     return !!token && !!user && !hasTokenExpired();
   };
 
-  const hasRedirectedFromValidPopup = () => {
+  const hasRedirectedFromValidPopup = (): boolean => {
     if (window.opener === null) {
       return false;
     }
 
-    const { hostname: openerHostname } = new URL(window.opener.location.href);
-    const { hostname } = new URL(window.location.href);
+    try {
+      const { hostname: openerHostname } = new URL(window.opener.location.href);
+      const { hostname } = new URL(window.location.href);
 
-    return (
-      window.opener &&
-      window.opener !== window &&
-      !!window.opener.spotifyAuthCallback &&
-      openerHostname === hostname &&
-      window.history.length >= 2 // todo test this out
-    );
+      const opener = window.opener as Window & { spotifyAuthCallback?: (accessToken: string, expTimestamp: number) => void };
+      return (
+        window.opener &&
+        window.opener !== window &&
+        !!opener.spotifyAuthCallback &&
+        openerHostname === hostname &&
+        window.history.length >= 2 // todo test this out
+      );
+    } catch {
+      return false;
+    }
   };
 
-  const loadCurrentUser = async () => {
+  const loadCurrentUser = async (): Promise<void> => {
     try {
       const user = await fetchCurrentUserInfo();
 
@@ -208,7 +257,7 @@ const useProvideSpotify = () => {
     try {
       const accessToken = window.localStorage.getItem(LS_KEYS.ACCESS_TOKEN);
       const expTimestamp = parseInt(
-        window.localStorage.getItem(LS_KEYS.EXP_TIMESTAMP),
+        window.localStorage.getItem(LS_KEYS.EXP_TIMESTAMP) || "0",
         10
       );
 
@@ -229,7 +278,7 @@ const useProvideSpotify = () => {
   useEffect(() => {
     if (token && tokenExp) {
       if (!user) {
-        loadCurrentUser();
+        void loadCurrentUser();
       } else {
         setIsLoading(false);
       }
@@ -253,3 +302,4 @@ const useProvideSpotify = () => {
     fetchSearchResults,
   };
 };
+

@@ -47,6 +47,7 @@ const REACT_APP_TIDAL_SCOPES: string[] = envScopes
       'playlists.read',
       'recommendations.read',
       'search.read',
+      'user.read',
     ];
 
 const STORAGE_KEYS = {
@@ -142,6 +143,7 @@ export const useTidal = (): UseTidalReturn => {
     try {
       await initializeAuth();
       setFinalizeDone(true);
+      // TODO see if you can store window.location.search to be able to refresh the page and still have the token
       await auth.finalizeLogin(window.location.search);
 
       const credentials =

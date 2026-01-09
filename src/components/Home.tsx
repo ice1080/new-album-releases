@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTidal } from '../hooks/useTidal';
+import { getAllSavedAlbums } from '../utils/tidal';
 import TopArtists from './TopArtists';
 import LoadingIcon from './LoadingIcon';
 import ApiCount from './ApiCount';
@@ -10,30 +11,20 @@ interface Artist {
   [key: string]: unknown;
 }
 
-interface Album {
-  images?: Array<{ url: string }>;
-  artistName?: string;
-  name: string;
-  release_date: string;
-  isAlbumSaved?: boolean;
-  id?: string;
-  artists?: Artist[];
-  artist?: Artist | Artist[];
-  [key: string]: unknown;
-}
+interface AlbumAttributes {}
 
-interface TidalAlbumResponse {
-  items?: Album[];
-  data?: {
-    items?: Album[];
-  };
+interface Album {
+  attributes: AlbumAttributes;
+  title: string;
+  releaseDate: string;
+  id: string;
 }
 
 export default function Home() {
   const ARTISTS_VIEW = 'artists';
   const ALBUMS_VIEW = 'albums';
   // const MAX_SAVED_ALBUMS = 2000;
-  const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
+  // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
 
   const [topArtists] = useState<Artist[]>([]);
   const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
@@ -76,106 +67,58 @@ export default function Home() {
   //   });
   // };
 
-  const getAllSavedAlbums = useCallback(() => {
+  const fetchAllSavedAlbums = useCallback(async () => {
     if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
-      console.log('getAllSavedAlbums');
-      // TODO add sleep here?
       setIsLoading(true);
-      const albumPromises: Promise<TidalAlbumResponse>[] = [];
-      albumPromises.push(
-        tidalClient.GET(
-          `/userCollections/${user.id}?include=albums`
-        ) as Promise<TidalAlbumResponse>
-      );
-      albumPromises.push(
-        tidalClient.GET(
-          `/userCollections/${user.id}/relationships/albums?include=albums`
-        ) as Promise<TidalAlbumResponse>
-      );
-      // TODO will have to use the cursor returned from each, unless there's a way to paginate?
-      // TODO try out the api on their page using the auth method instead of wasting time in here
 
-      // for (let i = 0; i < maxLimit; i++) {
-      //   incrementApiCount();
-      //   const offset = i * SAVED_ALBUMS_LIMIT;
-      //   const limit = 50;
-      //   // Tidal API endpoint for favorite albums with pagination
-      // }
-      Promise.all(albumPromises)
-        .then((albumsList) => {
-          let localSavedAlbums: Album[] = [];
-          albumsList.forEach((values) => {
-            // Tidal API returns items directly or in a data/items structure
-            const items = values.items || values.data?.items || [];
-            localSavedAlbums = localSavedAlbums.concat(
-              items.map((el) => (el.album || el) as Album)
-            );
-          });
-          const artistSavedAlbumCount: Record<
-            string,
-            { count: number; artist: Artist }
-          > = {};
-          const minSavedCountArtists = new Set<Artist>();
-          localSavedAlbums.forEach((album) => {
-            // Tidal API may have artists in different structure
-            const artists =
-              album.artists ||
-              (Array.isArray(album.artist)
-                ? album.artist
-                : album.artist
-                  ? [album.artist]
-                  : []);
-            artists.forEach((artist) => {
-              const artistName = (artist as Artist).name || String(artist);
-              let newCount = 1;
-              if (artistSavedAlbumCount[artistName]) {
-                newCount = artistSavedAlbumCount[artistName].count + 1;
-                artistSavedAlbumCount[artistName].count = newCount;
-              } else {
-                artistSavedAlbumCount[artistName] = {
-                  count: newCount,
-                  artist: artist as Artist,
-                };
-              }
-              if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
-                minSavedCountArtists.add(artist as Artist);
-              }
-            });
-          });
-          /* const filteredTest = Object.keys(artistSavedAlbumCount)
-           *   .filter(
-           *     (artistName) =>
-           *       artistSavedAlbumCount[artistName].count >=
-           *       ARTIST_MIN_SAVED_ALBUM_COUNT
-           *   )
-           *   .reduce(
-           *     (res, key) =>
-           *       Object.assign(res, { [key]: artistSavedAlbumCount[key] }),
-           *     {}
-           *   ); */
+      try {
+        const localSavedAlbums = await getAllSavedAlbums(tidalClient, user);
 
-          /* console.log("localSavedAlbums", localSavedAlbums); */
-          /* console.log(
-           *   "artistSavedAlbumCount",
-           *   artistSavedAlbumCount,
-           *   Object.keys(artistSavedAlbumCount).length
-           * ); */
-          /* console.log(
-           *   `artists with more than ${ARTIST_MIN_SAVED_ALBUM_COUNT} saved albums`,
-           *   filteredTest,
-           *   Object.keys(filteredTest).length
-           * ); */
-          console.log(
-            'savedAlbumArtists',
-            minSavedCountArtists,
-            minSavedCountArtists.size
-          );
-          setSavedAlbumArtists(Array.from(minSavedCountArtists));
-        })
-        .catch((error) => {
-          console.error('Error fetching saved albums from Tidal:', error);
-          setIsLoading(false);
-        });
+        console.log('retrieved', localSavedAlbums);
+
+        // const artistSavedAlbumCount: Record<
+        //   string,
+        //   { count: number; artist: Artist }
+        // > = {};
+        // const minSavedCountArtists = new Set<Artist>();
+        // localSavedAlbums.forEach((album) => {
+        //   // Tidal API may have artists in different structure
+        //   const artists =
+        //     album.artists ||
+        //     (Array.isArray(album.artist)
+        //       ? album.artist
+        //       : album.artist
+        //         ? [album.artist]
+        //         : []);
+        //   artists.forEach((artist) => {
+        //     const artistName = (artist as Artist).name || String(artist);
+        //     let newCount = 1;
+        //     if (artistSavedAlbumCount[artistName]) {
+        //       newCount = artistSavedAlbumCount[artistName].count + 1;
+        //       artistSavedAlbumCount[artistName].count = newCount;
+        //     } else {
+        //       artistSavedAlbumCount[artistName] = {
+        //         count: newCount,
+        //         artist: artist as Artist,
+        //       };
+        //     }
+        //     if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
+        //       minSavedCountArtists.add(artist as Artist);
+        //     }
+        //   });
+        // });
+
+        // console.log(
+        //   'savedAlbumArtists',
+        //   minSavedCountArtists,
+        //   minSavedCountArtists.size
+        // );
+        // setSavedAlbumArtists(Array.from(minSavedCountArtists));
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching saved albums from Tidal:', error);
+        setIsLoading(false);
+      }
     }
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
@@ -308,11 +251,10 @@ export default function Home() {
   // }, [getAllSavedAlbums, getAllTopArtists, hasLoggedIn]);
 
   useEffect(() => {
-    console.log('home - hasLoggedIn change', hasLoggedIn);
     if (hasLoggedIn) {
-      getAllSavedAlbums();
+      fetchAllSavedAlbums();
     }
-  }, [getAllSavedAlbums, hasLoggedIn]);
+  }, [fetchAllSavedAlbums, hasLoggedIn]);
 
   // useEffect(() => {
   //   /* console.log("topArtists", topArtists); */
@@ -327,9 +269,9 @@ export default function Home() {
 
   useEffect(() => {
     if (addSavedToQuery && savedAlbumArtists.length === 0) {
-      getAllSavedAlbums();
+      fetchAllSavedAlbums();
     }
-  }, [addSavedToQuery, savedAlbumArtists.length, getAllSavedAlbums]);
+  }, [addSavedToQuery, savedAlbumArtists.length, fetchAllSavedAlbums]);
 
   // useEffect(() => {
   //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {

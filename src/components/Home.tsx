@@ -74,7 +74,10 @@ export default function Home() {
       try {
         const localSavedAlbums = await getAllSavedAlbums(tidalClient, user);
 
-        console.log('retrieved', localSavedAlbums);
+        console.log(
+          'retrieved saved albums',
+          localSavedAlbums.map((album) => album.attributes.title)
+        );
 
         // const artistSavedAlbumCount: Record<
         //   string,

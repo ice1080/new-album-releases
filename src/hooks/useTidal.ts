@@ -216,10 +216,10 @@ export const useTidal = (): UseTidalReturn => {
         : null;
 
       if (accessToken && !token) {
-        console.log('initializing token from localStorage');
+        // console.log('initializing token from localStorage');
         setToken(accessToken);
         setTokenExp(expTimestamp);
-        console.log('token initialized from localStorage via setToken');
+        // console.log('token initialized from localStorage via setToken');
       } else if (!accessToken && token) {
         console.warn(
           'WARNING: localStorage has no token but state has token. Token may have been cleared externally.'

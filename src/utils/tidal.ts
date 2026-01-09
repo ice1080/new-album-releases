@@ -17,10 +17,8 @@ interface Album {
 }
 
 interface TidalAlbumResponse {
-  data: {
-    included?: Album[];
-    links: { next?: string };
-  };
+  included?: Album[];
+  links: { next?: string };
   [key: string]: unknown;
 }
 
@@ -28,6 +26,11 @@ interface GetAllSavedAlbumsOptions {
   maxRetries?: number;
   initialRetryDelay?: number;
   maxRetryDelay?: number;
+}
+
+interface ErrorResponse {
+  error: unknown;
+  response?: Response | { status?: number; statusCode?: number };
 }
 
 /**
@@ -134,8 +137,9 @@ export const getAllSavedAlbums = async (
 
         // Check if result has an error property (openapi-fetch pattern)
         if (result && typeof result === 'object' && 'error' in result) {
-          const errorResult = result as { error: unknown; response?: Response };
-          if (errorResult.error) {
+          const errorResult = result as ErrorResponse;
+          if (errorResult.response?.status === 429) {
+            // if (errorResult.error) {
             // Extract status from response if available
             const status = errorResult.response?.status;
             const errorWithStatus = {
@@ -188,12 +192,13 @@ export const getAllSavedAlbums = async (
     }
 
     // Tidal API returns items directly or in a data/items structure
-    const items = response.data?.included || [];
+    const items = response.included || [];
+    console.log('response', items[0].attributes.title);
     localSavedAlbums.push(...items);
 
     // Check if there are more pages
     // Update cursor from response for next iteration
-    const nextCursor = response.data.links?.next;
+    const nextCursor = response.links?.next;
 
     // Stop if we got no items (no more data)
     if (items.length === 0) {

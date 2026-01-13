@@ -26,6 +26,7 @@ interface GetAllSavedAlbumsOptions {
   maxRetries?: number;
   initialRetryDelay?: number;
   maxRetryDelay?: number;
+  onApiCall?: () => void;
 }
 
 interface ErrorResponse {
@@ -105,9 +106,6 @@ const handleRateLimit = async (
   return true;
 };
 
-/**
- * Wrapper method to get all saved albums from Tidal with pagination and rate limit handling
- */
 export const getAllSavedAlbums = async (
   tidalClient: TidalAPIClient,
   user: TidalUser,
@@ -139,17 +137,18 @@ export const getAllSavedAlbums = async (
         if (result && typeof result === 'object' && 'error' in result) {
           const errorResult = result as ErrorResponse;
           if (errorResult.response?.status === 429) {
-            // if (errorResult.error) {
             // Extract status from response if available
             const status = errorResult.response?.status;
             const errorWithStatus = {
-              ...errorResult.error,
+              ...(typeof errorResult.error === 'object' &&
+              errorResult.error !== null
+                ? errorResult.error
+                : { error: errorResult.error }),
               status,
               statusCode: status,
               response: errorResult.response,
             };
 
-            console.log('API error detected:', errorWithStatus);
             const shouldRetry = await handleRateLimit(
               errorWithStatus,
               retryCount,
@@ -176,6 +175,7 @@ export const getAllSavedAlbums = async (
           response = result as unknown as TidalAlbumResponse;
         }
         success = true;
+        options.onApiCall?.();
       } catch (error) {
         console.log('Exception caught:', error);
         const shouldRetry = await handleRateLimit(error, retryCount, options);
@@ -193,8 +193,12 @@ export const getAllSavedAlbums = async (
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.included || [];
-    console.log('response', items[0].attributes.title);
     localSavedAlbums.push(...items);
+
+    // Log progress every 100 albums
+    if (localSavedAlbums.length % 100 === 0) {
+      console.log(`Fetched ${localSavedAlbums.length} albums so far...`);
+    }
 
     // Check if there are more pages
     // Update cursor from response for next iteration

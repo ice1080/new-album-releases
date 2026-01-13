@@ -33,7 +33,7 @@ export default function Home() {
   const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
   const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [apiCount] = useState<number>(0);
+  const [apiCount, setApiCount] = useState<number>(0);
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
 
@@ -70,13 +70,19 @@ export default function Home() {
   const fetchAllSavedAlbums = useCallback(async () => {
     if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
       setIsLoading(true);
+      setApiCount(0); // Reset count at start
 
       try {
-        const localSavedAlbums = await getAllSavedAlbums(tidalClient, user);
+        const localSavedAlbums = await getAllSavedAlbums(tidalClient, user, {
+          onApiCall: () => setApiCount((prev) => prev + 1),
+        });
 
         console.log(
           'retrieved saved albums',
-          localSavedAlbums.map((album) => album.attributes.title)
+          localSavedAlbums.map(
+            (album) =>
+              (album.attributes as { title?: string })?.title || album.title
+          )
         );
 
         // const artistSavedAlbumCount: Record<

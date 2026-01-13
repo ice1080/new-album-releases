@@ -3,6 +3,7 @@ import { useTidal } from '../hooks/useTidal';
 import { getAllSavedAlbums } from '../utils/tidal';
 import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
+import CurrentProcess, { ProcessType } from './CurrentProcess';
 import LoadingIcon from './LoadingIcon';
 import TopArtists from './TopArtists';
 
@@ -37,6 +38,9 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState<boolean>(false);
   const [apiCount, setApiCount] = useState<number>(0);
+  const [currentProcess, setCurrentProcess] = useState<ProcessType>(
+    ProcessType.NONE
+  );
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
 
@@ -90,6 +94,7 @@ export default function Home() {
       }
 
       setIsLoadingAlbums(true);
+      setCurrentProcess(ProcessType.FETCHING_SAVED_ALBUMS);
       setApiCount(0); // Reset count at start
 
       try {
@@ -153,6 +158,7 @@ export default function Home() {
         console.error('Error fetching saved albums from Tidal:', error);
       } finally {
         setIsLoadingAlbums(false);
+        setCurrentProcess(ProcessType.NONE);
       }
     }
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
@@ -363,6 +369,7 @@ export default function Home() {
       {renderViewSelector()}
       <LoadingIcon isLoading={isLoadingAlbums} />
       <ApiCount apiCount={apiCount} />
+      <CurrentProcess process={currentProcess} />
       {renderCurrentView()}
     </>
   );

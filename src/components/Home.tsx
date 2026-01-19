@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
-import { getAllSavedAlbums } from '../utils/tidal';
+import { getAllAlbums, getAllSavedAlbums, SavedAlbum } from '../utils/tidal';
 import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
@@ -13,22 +13,13 @@ interface Artist {
   [key: string]: unknown;
 }
 
-interface AlbumAttributes {}
-
-interface Album {
-  attributes: AlbumAttributes;
-  title: string;
-  releaseDate: string;
-  id: string;
-}
-
 const SAVED_ALBUMS_STORAGE_KEY = 'tidal_saved_albums';
+const ALBUMS_STORAGE_KEY = 'tidal_albums';
 
 export default function Home() {
   const ARTISTS_VIEW = 'artists';
   const ALBUMS_VIEW = 'albums';
-  // const MAX_SAVED_ALBUMS = 2000;
-  // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
+  const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
 
   const [topArtists] = useState<Artist[]>([]);
   const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
@@ -36,6 +27,8 @@ export default function Home() {
   const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
   const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
   const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
+  const [isLoadingSavedAlbums, setIsLoadingSavedAlbums] =
+    useState<boolean>(false);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState<boolean>(false);
   const [apiCount, setApiCount] = useState<number>(0);
   const [currentProcess, setCurrentProcess] = useState<ProcessType>(
@@ -74,10 +67,10 @@ export default function Home() {
   //   });
   // };
 
-  const fetchAllSavedAlbums = useCallback(async () => {
+  const fetchAllSavedAlbums = useCallback(async (): Promise<SavedAlbum[]> => {
     if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
       // Check for cached albums first
-      const cachedAlbums = getWithExpiry<Album[]>(
+      const cachedAlbums = getWithExpiry<SavedAlbum[]>(
         `${SAVED_ALBUMS_STORAGE_KEY}_${user.id}`
       );
 
@@ -85,15 +78,12 @@ export default function Home() {
         console.log('Using cached saved albums:', cachedAlbums.length);
         console.log(
           'retrieved saved albums',
-          cachedAlbums.map(
-            (album) =>
-              (album.attributes as { title?: string })?.title || album.title
-          )
+          cachedAlbums.map((album) => album.attributes?.title)
         );
-        return;
+        return cachedAlbums;
       }
 
-      setIsLoadingAlbums(true);
+      setIsLoadingSavedAlbums(true);
       setCurrentProcess(ProcessType.FETCHING_SAVED_ALBUMS);
       setApiCount(0); // Reset count at start
 
@@ -109,13 +99,13 @@ export default function Home() {
         );
 
         console.log(
-          'retrieved saved albums',
-          localSavedAlbums.map(
-            (album) =>
-              (album.attributes as { title?: string })?.title || album.title
-          )
+          'retrieved saved albums, titles:',
+          localSavedAlbums.map((album) => album.attributes?.title)
         );
 
+        return localSavedAlbums;
+
+        // TODO move to new method
         // const artistSavedAlbumCount: Record<
         //   string,
         //   { count: number; artist: Artist }
@@ -157,11 +147,55 @@ export default function Home() {
       } catch (error) {
         console.error('Error fetching saved albums from Tidal:', error);
       } finally {
-        setIsLoadingAlbums(false);
+        setIsLoadingSavedAlbums(false);
         setCurrentProcess(ProcessType.NONE);
       }
     }
+    return [];
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
+
+  const fetchAllAlbums = useCallback(
+    async (savedAlbums: SavedAlbum[]) => {
+      if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
+        // Check for cached albums first
+        const cachedAlbums = getWithExpiry<SavedAlbum[]>(
+          `${ALBUMS_STORAGE_KEY}_${user.id}`
+        );
+
+        if (cachedAlbums) {
+          console.log('Using cached albums:', cachedAlbums.length);
+          console.log(
+            'retrieved albums',
+            cachedAlbums.map((album) => album.attributes?.title)
+          );
+          return;
+        }
+
+        setIsLoadingAlbums(true);
+        setCurrentProcess(ProcessType.FETCHING_ALBUMS);
+
+        try {
+          const localAlbums = await getAllAlbums(tidalClient, savedAlbums, {
+            onApiCall: () => setApiCount((prev) => prev + 1),
+          });
+
+          // Store albums in localStorage with expiry
+          setWithExpiry(`${ALBUMS_STORAGE_KEY}_${user.id}`, localAlbums);
+
+          console.log(
+            'retrieved albums',
+            localAlbums.map((album) => album.attributes?.title)
+          );
+        } catch (error) {
+          console.error('Error fetching albums from Tidal:', error);
+        } finally {
+          setIsLoadingAlbums(false);
+          setCurrentProcess(ProcessType.NONE);
+        }
+      }
+    },
+    [addSavedToQuery, hasLoggedIn, tidalClient, user]
+  );
 
   // const addSavedAlbums = async () => {
   //   console.log("addSavedAlbums");
@@ -303,14 +337,21 @@ export default function Home() {
   // }, [topArtists, savedAlbumArtists]);
 
   useEffect(() => {
-    if (hasLoggedIn && addSavedToQuery && savedAlbumArtists.length === 0) {
-      fetchAllSavedAlbums();
-    }
+    const asyncMethod = async () => {
+      if (hasLoggedIn && addSavedToQuery && savedAlbumArtists.length === 0) {
+        console.log('retrieving albums');
+        const savedAlbums = await fetchAllSavedAlbums();
+        const albums = await fetchAllAlbums(savedAlbums);
+        console.log('retrieved albums', albums);
+      }
+    };
+    void asyncMethod();
   }, [
     addSavedToQuery,
     hasLoggedIn,
     savedAlbumArtists.length,
     fetchAllSavedAlbums,
+    fetchAllAlbums,
   ]);
 
   // useEffect(() => {
@@ -367,7 +408,7 @@ export default function Home() {
   return (
     <>
       {renderViewSelector()}
-      <LoadingIcon isLoading={isLoadingAlbums} />
+      <LoadingIcon isLoading={isLoadingSavedAlbums || isLoadingAlbums} />
       <ApiCount apiCount={apiCount} />
       <CurrentProcess process={currentProcess} />
       {renderCurrentView()}

@@ -1,3 +1,5 @@
+const MAX_SAVED_ALBUMS = 100;
+
 interface TidalAPIClient {
   GET: (path: string) => Promise<unknown>;
   [key: string]: unknown;
@@ -8,25 +10,33 @@ interface TidalUser {
   [key: string]: unknown;
 }
 
-interface Album {
-  attributes: unknown;
-  title: string;
-  releaseDate: string;
-  id: string;
-  [key: string]: unknown;
-}
-
-interface TidalAlbumResponse {
-  included?: Album[];
-  links: { next?: string };
-  [key: string]: unknown;
-}
-
-interface GetAllSavedAlbumsOptions {
+interface FetchOptions {
   maxRetries?: number;
   initialRetryDelay?: number;
   maxRetryDelay?: number;
   onApiCall?: () => void;
+}
+
+interface AlbumAttributes {
+  title: string;
+  releaseDate: string;
+  type: string;
+}
+
+export interface SavedAlbum {
+  attributes: AlbumAttributes;
+  id: string;
+}
+
+export interface Album {
+  id: string;
+  attributes: AlbumAttributes;
+}
+
+interface TidalSavedAlbumResponse {
+  included?: SavedAlbum[];
+  links: { next?: string };
+  [key: string]: unknown;
 }
 
 interface ErrorResponse {
@@ -40,7 +50,7 @@ interface ErrorResponse {
 const handleRateLimit = async (
   error: unknown,
   retryCount: number,
-  options: GetAllSavedAlbumsOptions
+  options: FetchOptions
 ): Promise<boolean> => {
   const {
     maxRetries = 5,
@@ -109,11 +119,143 @@ const handleRateLimit = async (
 export const getAllSavedAlbums = async (
   tidalClient: TidalAPIClient,
   user: TidalUser,
-  options: GetAllSavedAlbumsOptions = {}
-): Promise<Album[]> => {
-  const localSavedAlbums: Album[] = [];
+  options: FetchOptions = {}
+): Promise<SavedAlbum[]> => {
+  const localSavedAlbums: SavedAlbum[] = [];
   let nextUrl: string | undefined = undefined;
   let hasMore = true;
+
+  while (hasMore) {
+    let retryCount = 0;
+    let success = false;
+    let response: TidalSavedAlbumResponse | null = null;
+
+    // Retry loop for handling rate limits
+    while (!success && retryCount < (options.maxRetries || 5)) {
+      try {
+        // Build the URL with cursor if available
+        const url =
+          nextUrl ||
+          `/userCollections/${user.id}/relationships/albums?include=albums`;
+
+        // openapi-fetch returns { data, error, response } - check for errors
+        const result = (await tidalClient.GET(url)) as
+          | TidalSavedAlbumResponse
+          | {
+              data?: TidalSavedAlbumResponse;
+              error?: unknown;
+              response?: Response;
+            };
+
+        // Check if result has an error property (openapi-fetch pattern)
+        if (result && typeof result === 'object' && 'error' in result) {
+          const errorResult = result as ErrorResponse;
+          if (errorResult.response?.status === 429) {
+            // Extract status from response if available
+            const status = errorResult.response?.status;
+            const errorWithStatus = {
+              ...(typeof errorResult.error === 'object' &&
+              errorResult.error !== null
+                ? errorResult.error
+                : { error: errorResult.error }),
+              status,
+              statusCode: status,
+              response: errorResult.response,
+            };
+
+            const shouldRetry = await handleRateLimit(
+              errorWithStatus,
+              retryCount,
+              options
+            );
+            if (!shouldRetry) {
+              // Not a rate limit error or max retries reached
+              throw errorResult.error;
+            }
+            retryCount++;
+            continue;
+          }
+        }
+
+        // If result has data property, use it; otherwise assume result is the data
+        if (result && typeof result === 'object' && 'data' in result) {
+          const dataResult = result as { data?: TidalSavedAlbumResponse };
+          if (dataResult.data) {
+            response = dataResult.data;
+          } else {
+            throw new Error('Response has data property but data is undefined');
+          }
+        } else {
+          response = result as unknown as TidalSavedAlbumResponse;
+        }
+        success = true;
+        options.onApiCall?.();
+      } catch (error) {
+        console.log('Exception caught:', error);
+        const shouldRetry = await handleRateLimit(error, retryCount, options);
+        if (!shouldRetry) {
+          // Not a rate limit error or max retries reached
+          throw error;
+        }
+        retryCount++;
+      }
+    }
+
+    if (!response) {
+      throw new Error('Failed to fetch albums after retries');
+    }
+
+    // Tidal API returns items directly or in a data/items structure
+    const items = response.included || [];
+    localSavedAlbums.push(...items);
+
+    // Log progress every 100 albums
+    if (localSavedAlbums.length % 100 === 0) {
+      console.log(`Fetched ${localSavedAlbums.length} albums so far...`);
+    }
+
+    // TODO remove this eventually
+    if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
+      hasMore = false;
+      continue;
+    }
+
+    // Check if there are more pages
+    // Update cursor from response for next iteration
+    const nextCursor = response.links?.next;
+
+    // Stop if we got no items (no more data)
+    if (items.length === 0) {
+      hasMore = false;
+    } else if (nextCursor && nextCursor !== nextUrl) {
+      // Continue if we have a new cursor
+      nextUrl = nextCursor;
+      hasMore = true;
+    } else {
+      // No cursor or same cursor means we're done
+      hasMore = false;
+    }
+  }
+
+  return localSavedAlbums;
+};
+
+interface TidalAlbumResponse {
+  included?: Album[];
+  links: { next?: string };
+  [key: string]: unknown;
+}
+
+export const getAllAlbums = async (
+  tidalClient: TidalAPIClient,
+  savedAlbums: SavedAlbum[],
+  options: FetchOptions = {}
+): Promise<Album[]> => {
+  const localAlbums: Album[] = [];
+  let nextUrl: string | undefined = undefined;
+  let hasMore = true;
+
+  const allAlbumIds = savedAlbums.map((album) => album.id);
 
   while (hasMore) {
     let retryCount = 0;
@@ -126,12 +268,16 @@ export const getAllSavedAlbums = async (
         // Build the URL with cursor if available
         const url =
           nextUrl ||
-          `/userCollections/${user.id}/relationships/albums?include=albums`;
+          `/albums?filter[id]=${allAlbumIds.join(',')}&include=artists`;
 
         // openapi-fetch returns { data, error, response } - check for errors
         const result = (await tidalClient.GET(url)) as
           | TidalAlbumResponse
-          | { data?: TidalAlbumResponse; error?: unknown; response?: Response };
+          | {
+              data?: TidalAlbumResponse;
+              error?: unknown;
+              response?: Response;
+            };
 
         // Check if result has an error property (openapi-fetch pattern)
         if (result && typeof result === 'object' && 'error' in result) {
@@ -193,11 +339,14 @@ export const getAllSavedAlbums = async (
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.included || [];
-    localSavedAlbums.push(...items);
+    if (localAlbums.length === 0) {
+      console.log('full response', response);
+    }
+    localAlbums.push(...items);
 
     // Log progress every 100 albums
-    if (localSavedAlbums.length % 100 === 0) {
-      console.log(`Fetched ${localSavedAlbums.length} albums so far...`);
+    if (localAlbums.length % 100 === 0) {
+      console.log(`Fetched ${localAlbums.length} albums so far...`);
     }
 
     // Check if there are more pages
@@ -217,5 +366,5 @@ export const getAllSavedAlbums = async (
     }
   }
 
-  return localSavedAlbums;
+  return localAlbums;
 };

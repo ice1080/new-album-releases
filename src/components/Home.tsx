@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
-import { getAllAlbums, getAllSavedAlbums, SavedAlbum } from '../utils/tidal';
+import {
+  getAllAlbumArtistIds,
+  getAllSavedAlbums,
+  SavedAlbum,
+} from '../utils/tidal';
 import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
@@ -14,7 +18,7 @@ interface Artist {
 }
 
 const SAVED_ALBUMS_STORAGE_KEY = 'tidal_saved_albums';
-const ALBUMS_STORAGE_KEY = 'tidal_albums';
+const ALBUM_ARTIST_IDS_STORAGE_KEY = 'tidal_album_artist_ids';
 
 export default function Home() {
   const ARTISTS_VIEW = 'artists';
@@ -154,45 +158,53 @@ export default function Home() {
     return [];
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
-  const fetchAllAlbums = useCallback(
-    async (savedAlbums: SavedAlbum[]) => {
+  const fetchAllAlbumArtistIds = useCallback(
+    async (savedAlbums: SavedAlbum[]): Promise<Map<string, number>> => {
       if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
-        // Check for cached albums first
-        const cachedAlbums = getWithExpiry<SavedAlbum[]>(
-          `${ALBUMS_STORAGE_KEY}_${user.id}`
+        // Check for cached artist counts first
+        // Convert array of [key, value] pairs back to Map
+        const cachedArtistCountsArray = getWithExpiry<[string, number][]>(
+          `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`
         );
 
-        if (cachedAlbums) {
-          console.log('Using cached albums:', cachedAlbums.length);
-          console.log(
-            'retrieved albums',
-            cachedAlbums.map((album) => album.attributes?.title)
+        if (cachedArtistCountsArray) {
+          const cachedArtistCounts = new Map<string, number>(
+            cachedArtistCountsArray
           );
-          return;
+          console.log('Using cached artist counts:', cachedArtistCounts.size);
+          return cachedArtistCounts;
         }
 
         setIsLoadingAlbums(true);
         setCurrentProcess(ProcessType.FETCHING_ALBUMS);
 
         try {
-          const localAlbums = await getAllAlbums(tidalClient, savedAlbums, {
-            onApiCall: () => setApiCount((prev) => prev + 1),
-          });
-
-          // Store albums in localStorage with expiry
-          setWithExpiry(`${ALBUMS_STORAGE_KEY}_${user.id}`, localAlbums);
-
-          console.log(
-            'retrieved albums',
-            localAlbums.map((album) => album.attributes?.title)
+          const artistCountMap = await getAllAlbumArtistIds(
+            tidalClient,
+            savedAlbums,
+            {
+              onApiCall: () => setApiCount((prev) => prev + 1),
+            }
           );
+
+          // Store artist counts in localStorage with expiry
+          // Convert Map to array of [key, value] pairs for storage
+          setWithExpiry(
+            `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`,
+            Array.from(artistCountMap.entries())
+          );
+
+          console.log('retrieved artist counts:', artistCountMap.size);
+          return artistCountMap;
         } catch (error) {
-          console.error('Error fetching albums from Tidal:', error);
+          console.error('Error fetching album artist IDs from Tidal:', error);
+          return new Map<string, number>();
         } finally {
           setIsLoadingAlbums(false);
           setCurrentProcess(ProcessType.NONE);
         }
       }
+      return new Map<string, number>();
     },
     [addSavedToQuery, hasLoggedIn, tidalClient, user]
   );
@@ -341,8 +353,8 @@ export default function Home() {
       if (hasLoggedIn && addSavedToQuery && savedAlbumArtists.length === 0) {
         console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
-        const albums = await fetchAllAlbums(savedAlbums);
-        console.log('retrieved albums', albums);
+        const artistCountMap = await fetchAllAlbumArtistIds(savedAlbums);
+        console.log('retrieved artist counts', artistCountMap);
       }
     };
     void asyncMethod();
@@ -351,7 +363,7 @@ export default function Home() {
     hasLoggedIn,
     savedAlbumArtists.length,
     fetchAllSavedAlbums,
-    fetchAllAlbums,
+    fetchAllAlbumArtistIds,
   ]);
 
   // useEffect(() => {

@@ -28,11 +28,6 @@ export interface SavedAlbum {
   id: string;
 }
 
-export interface Album {
-  id: string;
-  attributes: AlbumAttributes;
-}
-
 interface TidalSavedAlbumResponse {
   included?: SavedAlbum[];
   links: { next?: string };
@@ -215,10 +210,10 @@ export const getAllSavedAlbums = async (
     }
 
     // TODO remove this eventually
-    if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
-      hasMore = false;
-      continue;
-    }
+    // if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
+    //   hasMore = false;
+    //   continue;
+    // }
 
     // Check if there are more pages
     // Update cursor from response for next iteration
@@ -240,24 +235,51 @@ export const getAllSavedAlbums = async (
   return localSavedAlbums;
 };
 
+interface AlbumRelationships {
+  artists: {
+    data: {
+      id: string;
+    }[];
+  };
+}
+
+export interface Album {
+  id: string;
+  attributes: AlbumAttributes;
+  relationships: AlbumRelationships;
+}
+
 interface TidalAlbumResponse {
-  included?: Album[];
+  data?: Album[];
+  included?: string[];
   links: { next?: string };
   [key: string]: unknown;
 }
 
-export const getAllAlbums = async (
+export const getAllAlbumArtistIds = async (
   tidalClient: TidalAPIClient,
   savedAlbums: SavedAlbum[],
   options: FetchOptions = {}
-): Promise<Album[]> => {
+): Promise<Map<string, number>> => {
   const localAlbums: Album[] = [];
-  let nextUrl: string | undefined = undefined;
-  let hasMore = true;
+  const artistCountMap = new Map<string, number>();
 
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
-  while (hasMore) {
+  // Split allAlbumIds into chunks of 20
+  const chunkSize = 20;
+  const chunks: string[][] = [];
+  for (let i = 0; i < allAlbumIds.length; i += chunkSize) {
+    chunks.push(allAlbumIds.slice(i, i + chunkSize));
+  }
+
+  console.log(
+    `Processing ${allAlbumIds.length} albums in ${chunks.length} chunks of up to ${chunkSize}...`
+  );
+
+  // Process each chunk synchronously
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
     let retryCount = 0;
     let success = false;
     let response: TidalAlbumResponse | null = null;
@@ -265,10 +287,8 @@ export const getAllAlbums = async (
     // Retry loop for handling rate limits
     while (!success && retryCount < (options.maxRetries || 5)) {
       try {
-        // Build the URL with cursor if available
-        const url =
-          nextUrl ||
-          `/albums?filter[id]=${allAlbumIds.join(',')}&include=artists`;
+        // Build the URL with the chunk of album IDs
+        const url = `/albums?filter[id]=${chunk.join(',')}&include=artists`;
 
         // openapi-fetch returns { data, error, response } - check for errors
         const result = (await tidalClient.GET(url)) as
@@ -338,8 +358,8 @@ export const getAllAlbums = async (
     }
 
     // Tidal API returns items directly or in a data/items structure
-    const items = response.included || [];
-    if (localAlbums.length === 0) {
+    const items = response.data || [];
+    if (chunkIndex === 0) {
       console.log('full response', response);
     }
     localAlbums.push(...items);
@@ -348,23 +368,17 @@ export const getAllAlbums = async (
     if (localAlbums.length % 100 === 0) {
       console.log(`Fetched ${localAlbums.length} albums so far...`);
     }
+  }
 
-    // Check if there are more pages
-    // Update cursor from response for next iteration
-    const nextCursor = response.links?.next;
-
-    // Stop if we got no items (no more data)
-    if (items.length === 0) {
-      hasMore = false;
-    } else if (nextCursor && nextCursor !== nextUrl) {
-      // Continue if we have a new cursor
-      nextUrl = nextCursor;
-      hasMore = true;
-    } else {
-      // No cursor or same cursor means we're done
-      hasMore = false;
+  // Count albums per artist ID
+  for (const album of localAlbums) {
+    const artistIds = album.relationships?.artists?.data || [];
+    for (const artist of artistIds) {
+      const artistId = artist.id;
+      const currentCount = artistCountMap.get(artistId) || 0;
+      artistCountMap.set(artistId, currentCount + 1);
     }
   }
 
-  return localAlbums;
+  return artistCountMap;
 };

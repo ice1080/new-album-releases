@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
 import {
+  Album,
   getAllAlbumArtistIds,
   getAllArtistAlbums,
   getAllSavedAlbums,
@@ -24,12 +25,11 @@ const ALBUM_ARTIST_IDS_STORAGE_KEY = 'tidal_album_artist_ids';
 export default function Home() {
   const ARTISTS_VIEW = 'artists';
   const ALBUMS_VIEW = 'albums';
-  const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
+  // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
   // const CUTOFF_DAYS_AGO = 250;
-  // let CUTOFF_DATE;
 
   const [topArtists] = useState<Artist[]>([]);
-  const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
+  // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
   // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
   const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
   const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
@@ -215,17 +215,15 @@ export default function Home() {
   const fetchAllArtistAlbums = useCallback(
     async (
       artistCountMap: Map<string, number>
-    ): Promise<Map<string, string[]>> => {
+    ): Promise<Map<string, Album[]>> => {
       if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
-        const artistIdsWithMultipleAlbums = Array.from(
-          artistCountMap.entries()
-        )
+        const artistIdsWithMultipleAlbums = Array.from(artistCountMap.entries())
           .filter(([, count]) => count > 1)
           .map(([artistId]) => artistId);
 
         if (artistIdsWithMultipleAlbums.length === 0) {
           console.log('No artists with multiple saved albums found.');
-          return new Map<string, string[]>();
+          return new Map<string, Album[]>();
         }
 
         setIsLoadingAlbums(true);
@@ -244,14 +242,14 @@ export default function Home() {
           return artistAlbumsMap;
         } catch (error) {
           console.error('Error fetching artist albums from Tidal:', error);
-          return new Map<string, string[]>();
+          return new Map<string, Album[]>();
         } finally {
           setIsLoadingAlbums(false);
           setCurrentProcess(ProcessType.NONE);
         }
       }
 
-      return new Map<string, string[]>();
+      return new Map<string, Album[]>();
     },
     [addSavedToQuery, hasLoggedIn, tidalClient, user]
   );
@@ -340,12 +338,9 @@ export default function Home() {
   // };
 
   // const cutoffDate = useMemo(() => {
-  //   if (!CUTOFF_DATE) {
-  //     let d = new Date();
-  //     d.setDate(d.getDate() - CUTOFF_DAYS_AGO);
-  //     CUTOFF_DATE = d;
-  //   }
-  //   return CUTOFF_DATE;
+  //   let date = new Date();
+  //   date.setDate(date.getDate() - CUTOFF_DAYS_AGO);
+  //   return date;
   // }, []);
 
   // const isDuplicateAlbum = (album1, album2) => {
@@ -397,7 +392,7 @@ export default function Home() {
 
   useEffect(() => {
     const asyncMethod = async () => {
-      if (hasLoggedIn && addSavedToQuery && savedAlbumArtists.length === 0) {
+      if (hasLoggedIn && addSavedToQuery) {
         console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
         console.log('retrieving album artist ids');
@@ -412,7 +407,6 @@ export default function Home() {
   }, [
     addSavedToQuery,
     hasLoggedIn,
-    savedAlbumArtists.length,
     fetchAllSavedAlbums,
     fetchAllAlbumArtistIds,
     fetchAllArtistAlbums,

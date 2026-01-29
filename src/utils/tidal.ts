@@ -1,4 +1,6 @@
-const MAX_SAVED_ALBUMS = 100;
+// TODO what was this for?
+// const MAX_SAVED_ALBUMS = 100;
+const CHUNK_SIZE = 20;
 
 interface TidalAPIClient {
   GET: (path: string) => Promise<unknown>;
@@ -266,15 +268,14 @@ export const getAllAlbumArtistIds = async (
 
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
-  // Split allAlbumIds into chunks of 20
-  const chunkSize = 20;
+  // Split allAlbumIds into chunks
   const chunks: string[][] = [];
-  for (let i = 0; i < allAlbumIds.length; i += chunkSize) {
-    chunks.push(allAlbumIds.slice(i, i + chunkSize));
+  for (let i = 0; i < allAlbumIds.length; i += CHUNK_SIZE) {
+    chunks.push(allAlbumIds.slice(i, i + CHUNK_SIZE));
   }
 
   console.log(
-    `Processing ${allAlbumIds.length} albums in ${chunks.length} chunks of up to ${chunkSize}...`
+    `Processing ${allAlbumIds.length} albums in ${chunks.length} chunks of up to ${CHUNK_SIZE}...`
   );
 
   // Process each chunk synchronously
@@ -388,7 +389,7 @@ interface TidalArtistRelationships {
     links?: {
       self: string;
       next?: string;
-    }
+    };
   };
 }
 
@@ -410,15 +411,14 @@ export const getAllArtistAlbums = async (
 ): Promise<Map<string, Album[]>> => {
   const artistAlbumsMap = new Map<string, Album[]>();
 
-  // Split artistIds into chunks of 20
-  const chunkSize = 20;
+  // Split artistIds into chunks
   const chunks: string[][] = [];
-  for (let i = 0; i < artistIds.length; i += chunkSize) {
-    chunks.push(artistIds.slice(i, i + chunkSize));
+  for (let i = 0; i < artistIds.length; i += CHUNK_SIZE) {
+    chunks.push(artistIds.slice(i, i + CHUNK_SIZE));
   }
 
   console.log(
-    `Processing ${artistIds.length} artists in ${chunks.length} chunks of up to ${chunkSize}...`
+    `Processing ${artistIds.length} artists in ${chunks.length} chunks of up to ${CHUNK_SIZE}...`
   );
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
@@ -505,7 +505,9 @@ export const getAllArtistAlbums = async (
 
     // Log progress every 100 albums
     if (artistAlbumsMap.keys.length % 100 === 0) {
-      console.log(`Fetched ${artistAlbumsMap.keys.length} artists' albums so far...`);
+      console.log(
+        `Fetched ${artistAlbumsMap.keys.length} artists' albums so far...`
+      );
     }
 
     const allResponseAlbumsMap = new Map<string, Album>();

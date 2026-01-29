@@ -359,9 +359,6 @@ export const getAllAlbumArtistIds = async (
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.data || [];
-    if (chunkIndex === 0) {
-      console.log('full response', response);
-    }
     localAlbums.push(...items);
 
     // Log progress every 100 albums
@@ -381,4 +378,170 @@ export const getAllAlbumArtistIds = async (
   }
 
   return artistCountMap;
+};
+
+interface TidalArtistRelationships {
+  albums?: {
+    data?: {
+      id: string;
+    }[];
+    links?: {
+      self: string;
+      next?: string;
+    }
+  };
+}
+
+interface TidalArtist {
+  id: string;
+  relationships?: TidalArtistRelationships;
+  [key: string]: unknown;
+}
+
+interface TidalArtistsResponse {
+  data?: TidalArtist[];
+  included?: Album[];
+}
+
+export const getAllArtistAlbums = async (
+  tidalClient: TidalAPIClient,
+  artistIds: string[],
+  options: FetchOptions = {}
+): Promise<Map<string, Album[]>> => {
+  const artistAlbumsMap = new Map<string, Album[]>();
+
+  // Split artistIds into chunks of 20
+  const chunkSize = 20;
+  const chunks: string[][] = [];
+  for (let i = 0; i < artistIds.length; i += chunkSize) {
+    chunks.push(artistIds.slice(i, i + chunkSize));
+  }
+
+  console.log(
+    `Processing ${artistIds.length} artists in ${chunks.length} chunks of up to ${chunkSize}...`
+  );
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    let retryCount = 0;
+    let success = false;
+    let response: TidalArtistsResponse | null = null;
+
+    // Retry loop for handling rate limits
+    while (!success && retryCount < (options.maxRetries || 5)) {
+      try {
+        const url = `/artists?filter[id]=${chunk.join(',')}&include=albums`;
+
+        const result = (await tidalClient.GET(url)) as
+          | TidalArtistsResponse
+          | {
+              data?: TidalArtistsResponse;
+              error?: unknown;
+              response?: Response;
+            };
+
+        // Check if result has an error property (openapi-fetch pattern)
+        if (result && typeof result === 'object' && 'error' in result) {
+          const errorResult = result as ErrorResponse;
+          if (errorResult.response?.status === 429) {
+            // Extract status from response if available
+            const status = errorResult.response?.status;
+            const errorWithStatus = {
+              ...(typeof errorResult.error === 'object' &&
+              errorResult.error !== null
+                ? errorResult.error
+                : { error: errorResult.error }),
+              status,
+              statusCode: status,
+              response: errorResult.response,
+            };
+
+            const shouldRetry = await handleRateLimit(
+              errorWithStatus,
+              retryCount,
+              options
+            );
+            if (!shouldRetry) {
+              // Not a rate limit error or max retries reached
+              throw errorResult.error;
+            }
+            retryCount++;
+            continue;
+          }
+        }
+
+        // If result has data property, use it; otherwise assume result is the data
+        if (result && typeof result === 'object' && 'data' in result) {
+          const dataResult = result as { data?: TidalArtistsResponse };
+          if (dataResult.data) {
+            response = dataResult.data;
+          } else {
+            throw new Error('Response has data property but data is undefined');
+          }
+        } else {
+          response = result as unknown as TidalArtistsResponse;
+        }
+        success = true;
+        options.onApiCall?.();
+      } catch (error) {
+        console.log('Exception caught:', error);
+        const shouldRetry = await handleRateLimit(error, retryCount, options);
+        if (!shouldRetry) {
+          // Not a rate limit error or max retries reached
+          throw error;
+        }
+        retryCount++;
+      }
+    }
+
+    if (!response) {
+      throw new Error('Failed to fetch artists after retries');
+    }
+
+    const artists = response.data || [];
+    if (chunkIndex === 0) {
+      console.log('full artist response', response);
+    }
+
+    // Log progress every 100 albums
+    if (artistAlbumsMap.keys.length % 100 === 0) {
+      console.log(`Fetched ${artistAlbumsMap.keys.length} artists' albums so far...`);
+    }
+
+    const allResponseAlbumsMap = new Map<string, Album>();
+    for (const album of response.included || []) {
+      if (album.id) {
+        allResponseAlbumsMap.set(album.id, album);
+      }
+    }
+
+    for (const artist of artists) {
+      if (artist.relationships?.albums?.links?.next) {
+        // todo this artist has more albums to retrieve
+      }
+      const albumsData = artist.relationships?.albums?.data || [];
+      const albumIds = albumsData.map((album) => album.id);
+
+      // TODO instead of getting all albums for the artist, just get the ones in the release date range that we care about
+      const albumsForArtist = albumIds
+        .map((id) => allResponseAlbumsMap.get(id))
+        .filter((album): album is Album => !!album);
+
+      // Remove each of those albums from the allResponseAlbumsMap since they're no longer needed
+      for (const album of albumsForArtist) {
+        if (album && album.id) {
+          allResponseAlbumsMap.delete(album.id);
+        }
+      }
+
+      if (!artistAlbumsMap.has(artist.id)) {
+        artistAlbumsMap.set(artist.id, albumsForArtist);
+      } else {
+        const existing = artistAlbumsMap.get(artist.id) ?? [];
+        artistAlbumsMap.set(artist.id, [...existing, ...albumsForArtist]);
+      }
+    }
+  }
+
+  return artistAlbumsMap;
 };

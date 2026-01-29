@@ -322,6 +322,11 @@ export const getAllAlbumArtistIds = async (
   return artistCountMap;
 };
 
+interface ArtistAttributes {
+  name: string;
+  [key: string]: unknown;
+}
+
 interface TidalArtistRelationships {
   albums?: {
     data?: {
@@ -334,8 +339,9 @@ interface TidalArtistRelationships {
   };
 }
 
-interface TidalArtist {
+export interface TidalArtist {
   id: string;
+  attributes?: ArtistAttributes;
   relationships?: TidalArtistRelationships;
   [key: string]: unknown;
 }
@@ -345,12 +351,18 @@ interface TidalArtistsResponse {
   included?: Album[];
 }
 
+export interface ArtistAlbumsResult {
+  artistAlbumsMap: Map<string, Album[]>;
+  artistsMap: Map<string, TidalArtist>;
+}
+
 export const getAllArtistAlbums = async (
   tidalClient: TidalAPIClient,
   artistIds: string[],
   options: FetchOptions = {}
-): Promise<Map<string, Album[]>> => {
+): Promise<ArtistAlbumsResult> => {
   const artistAlbumsMap = new Map<string, Album[]>();
+  const artistsMap = new Map<string, TidalArtist>();
 
   // Split artistIds into chunks
   const chunks = chunkArray(artistIds, CHUNK_SIZE);
@@ -372,6 +384,11 @@ export const getAllArtistAlbums = async (
     const artists = response.data || [];
     if (chunkIndex === 0) {
       console.log('full artist response', response);
+    }
+
+    // Store artist information
+    for (const artist of artists) {
+      artistsMap.set(artist.id, artist);
     }
 
     // Log progress every 100 albums
@@ -414,5 +431,5 @@ export const getAllArtistAlbums = async (
     }
   }
 
-  return artistAlbumsMap;
+  return { artistAlbumsMap, artistsMap };
 };

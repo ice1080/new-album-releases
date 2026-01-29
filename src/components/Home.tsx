@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
 import {
   Album,
@@ -6,12 +6,14 @@ import {
   getAllArtistAlbums,
   getAllSavedAlbums,
   SavedAlbum,
+  TidalArtist,
 } from '../utils/tidal';
 import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
 import LoadingIcon from './LoadingIcon';
 import TopArtists from './TopArtists';
+import RecentAlbumReleases from './RecentAlbumReleases';
 
 interface Artist {
   name: string;
@@ -19,14 +21,32 @@ interface Artist {
   [key: string]: unknown;
 }
 
+interface AlbumArtistInfo {
+  id: string;
+  name: string;
+}
+
 const SAVED_ALBUMS_STORAGE_KEY = 'tidal_saved_albums';
 const ALBUM_ARTIST_IDS_STORAGE_KEY = 'tidal_album_artist_ids';
+const ARTIST_ALBUMS_STORAGE_KEY = 'tidal_artist_albums';
+
+/**
+ * Checks if the required conditions are met for API calls
+ */
+const canFetch = (
+  addSavedToQuery: boolean,
+  tidalClient: unknown,
+  hasLoggedIn: boolean,
+  user: unknown
+): boolean => {
+  return !!(addSavedToQuery && tidalClient && hasLoggedIn && user);
+};
 
 export default function Home() {
   const ARTISTS_VIEW = 'artists';
   const ALBUMS_VIEW = 'albums';
   // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
-  // const CUTOFF_DAYS_AGO = 250;
+  const CUTOFF_DAYS_AGO = 250;
 
   const [topArtists] = useState<Artist[]>([]);
   // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
@@ -40,6 +60,11 @@ export default function Home() {
   const [apiCount, setApiCount] = useState<number>(0);
   const [currentProcess, setCurrentProcess] = useState<ProcessType>(
     ProcessType.NONE
+  );
+  const [artistsWithAlbums, setArtistsWithAlbums] =
+    useState<Map<string, Album[]>>();
+  const [artistsMap, setArtistsMap] = useState<Map<string, TidalArtist>>(
+    new Map()
   );
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
@@ -215,41 +240,87 @@ export default function Home() {
   const fetchAllArtistAlbums = useCallback(
     async (
       artistCountMap: Map<string, number>
-    ): Promise<Map<string, Album[]>> => {
-      if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
-        const artistIdsWithMultipleAlbums = Array.from(artistCountMap.entries())
-          .filter(([, count]) => count > 1)
-          .map(([artistId]) => artistId);
-
-        if (artistIdsWithMultipleAlbums.length === 0) {
-          console.log('No artists with multiple saved albums found.');
-          return new Map<string, Album[]>();
-        }
-
-        setIsLoadingAlbums(true);
-        setCurrentProcess(ProcessType.FETCHING_ALBUMS);
-
-        try {
-          const artistAlbumsMap = await getAllArtistAlbums(
-            tidalClient,
-            artistIdsWithMultipleAlbums,
-            {
-              onApiCall: () => setApiCount((prev) => prev + 1),
-            }
-          );
-
-          console.log('retrieved artist albums', artistAlbumsMap);
-          return artistAlbumsMap;
-        } catch (error) {
-          console.error('Error fetching artist albums from Tidal:', error);
-          return new Map<string, Album[]>();
-        } finally {
-          setIsLoadingAlbums(false);
-          setCurrentProcess(ProcessType.NONE);
-        }
+    ): Promise<{
+      artistAlbumsMap: Map<string, Album[]>;
+      artistsMap: Map<string, TidalArtist>;
+    }> => {
+      if (!canFetch(addSavedToQuery, tidalClient, hasLoggedIn, user)) {
+        return {
+          artistAlbumsMap: new Map<string, Album[]>(),
+          artistsMap: new Map<string, TidalArtist>(),
+        };
       }
 
-      return new Map<string, Album[]>();
+      const artistIdsWithMultipleAlbums = Array.from(artistCountMap.entries())
+        .filter(([, count]) => count > 1)
+        .map(([artistId]) => artistId);
+
+      if (artistIdsWithMultipleAlbums.length === 0) {
+        console.log('No artists with multiple saved albums found.');
+        return {
+          artistAlbumsMap: new Map<string, Album[]>(),
+          artistsMap: new Map<string, TidalArtist>(),
+        };
+      }
+
+      // Check for cached artist albums first
+      const artistAlbumsCacheKey = `${ARTIST_ALBUMS_STORAGE_KEY}_${(user as { id: string }).id}`;
+      const cachedArtistAlbums = getWithExpiry<{
+        artistAlbumsEntries: [string, Album[]][];
+        artistsEntries: [string, TidalArtist][];
+      }>(artistAlbumsCacheKey);
+
+      if (cachedArtistAlbums) {
+        const cachedArtistAlbumsMap = new Map<string, Album[]>(
+          cachedArtistAlbums.artistAlbumsEntries
+        );
+        const cachedArtistsMap = new Map<string, TidalArtist>(
+          cachedArtistAlbums.artistsEntries
+        );
+
+        console.log(
+          'Using cached artist albums:',
+          cachedArtistAlbumsMap.size,
+          'artists'
+        );
+        return {
+          artistAlbumsMap: cachedArtistAlbumsMap,
+          artistsMap: cachedArtistsMap,
+        };
+      }
+
+      setIsLoadingAlbums(true);
+      setCurrentProcess(ProcessType.FETCHING_ALBUMS);
+
+      try {
+        const result = await getAllArtistAlbums(
+          tidalClient!,
+          artistIdsWithMultipleAlbums,
+          {
+            onApiCall: () => setApiCount((prev) => prev + 1),
+          }
+        );
+
+        console.log('retrieved artist albums', result.artistAlbumsMap);
+        console.log('retrieved artists', result.artistsMap);
+
+        // Cache artist albums and artist info
+        setWithExpiry(artistAlbumsCacheKey, {
+          artistAlbumsEntries: Array.from(result.artistAlbumsMap.entries()),
+          artistsEntries: Array.from(result.artistsMap.entries()),
+        });
+
+        return result;
+      } catch (error) {
+        console.error('Error fetching artist albums from Tidal:', error);
+        return {
+          artistAlbumsMap: new Map<string, Album[]>(),
+          artistsMap: new Map<string, TidalArtist>(),
+        };
+      } finally {
+        setIsLoadingAlbums(false);
+        setCurrentProcess(ProcessType.NONE);
+      }
     },
     [addSavedToQuery, hasLoggedIn, tidalClient, user]
   );
@@ -337,11 +408,11 @@ export default function Home() {
   //   return Object.values(combined);
   // };
 
-  // const cutoffDate = useMemo(() => {
-  //   let date = new Date();
-  //   date.setDate(date.getDate() - CUTOFF_DAYS_AGO);
-  //   return date;
-  // }, []);
+  const cutoffDate = useMemo(() => {
+    let date = new Date();
+    date.setDate(date.getDate() - CUTOFF_DAYS_AGO);
+    return date;
+  }, []);
 
   // const isDuplicateAlbum = (album1, album2) => {
   //   // todo figure out a better way to display duplicate albums
@@ -400,7 +471,9 @@ export default function Home() {
         // TODO at some point need to save artist Ids to artist names somewhere
         console.log('retrieved artist counts', artistCountMap);
         console.log('retrieving artist albums');
-        await fetchAllArtistAlbums(artistCountMap);
+        const result = await fetchAllArtistAlbums(artistCountMap);
+        setArtistsWithAlbums(result.artistAlbumsMap);
+        setArtistsMap(result.artistsMap);
       }
     };
     void asyncMethod();
@@ -411,6 +484,76 @@ export default function Home() {
     fetchAllAlbumArtistIds,
     fetchAllArtistAlbums,
   ]);
+
+  const recentAlbums: Album[] = useMemo(() => {
+    let _recentAlbums: Album[] = [];
+
+    artistsWithAlbums?.forEach((albums) => {
+      if (Array.isArray(albums)) {
+        albums.forEach((album) => {
+          let releaseDateValue = album.attributes?.releaseDate;
+          if (releaseDateValue) {
+            const albumReleaseDate = new Date(releaseDateValue);
+            if (albumReleaseDate >= cutoffDate) {
+              _recentAlbums.push(album);
+            }
+          }
+        });
+      }
+    });
+
+    return _recentAlbums;
+  }, [artistsWithAlbums, cutoffDate]);
+
+  const albumToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
+    const reverseMap = new Map<string, AlbumArtistInfo[]>();
+
+    artistsWithAlbums?.forEach((albums, artistId) => {
+      albums.forEach((album) => {
+        if (!album.id) return;
+
+        // Get all artist IDs from the album's relationships
+        const albumArtistIds = album.relationships?.artists?.data || [];
+
+        // Build artist info for all artists associated with this album
+        const artistsForAlbum: AlbumArtistInfo[] = [];
+
+        albumArtistIds.forEach(({ id: relatedArtistId }) => {
+          // Check if we have this artist in our artistsMap
+          const artist = artistsMap.get(relatedArtistId);
+          if (artist) {
+            artistsForAlbum.push({
+              id: artist.id,
+              name: artist.attributes?.name || `Artist ${artist.id}`,
+            });
+          } else {
+            // Artist not in map, but still add it with ID as fallback
+            artistsForAlbum.push({
+              id: relatedArtistId,
+              name: `Artist ${relatedArtistId}`,
+            });
+          }
+        });
+
+        // Update the map, avoiding duplicates
+        const existingArtists = reverseMap.get(album.id) || [];
+        const existingIds = new Set(existingArtists.map((a) => a.id));
+
+        const newArtists = artistsForAlbum.filter(
+          (artist) => !existingIds.has(artist.id)
+        );
+
+        if (newArtists.length > 0) {
+          reverseMap.set(album.id, [...existingArtists, ...newArtists]);
+        } else if (existingArtists.length === 0) {
+          // If no artists found, at least set an empty array
+          reverseMap.set(album.id, artistsForAlbum);
+        }
+      });
+    });
+
+    return reverseMap;
+  }, [artistsWithAlbums, artistsMap]);
 
   // useEffect(() => {
   //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {
@@ -443,6 +586,10 @@ export default function Home() {
           </label>
 
           {/* <RecentAlbumReleases recentAlbums={filterAlbums(recentAlbums)} /> */}
+          <RecentAlbumReleases
+            recentAlbums={recentAlbums}
+            albumToArtistsMap={albumToArtistsMap}
+          />
         </>
       );
     }

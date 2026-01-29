@@ -42,6 +42,83 @@ interface ErrorResponse {
 }
 
 /**
+ * Splits an array into chunks of a specified size
+ */
+const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
+/**
+ * Parses the openapi-fetch response format and extracts the data
+ * Throws an error with status information if it's a 429 error
+ */
+const parseApiResponse = <T>(result: unknown): T => {
+  if (result && typeof result === 'object' && 'error' in result) {
+    const errorResult = result as ErrorResponse;
+    if (errorResult.response?.status === 429) {
+      // Extract status from response if availabxle
+      const status = errorResult.response?.status;
+      const errorWithStatus = {
+        ...(typeof errorResult.error === 'object' && errorResult.error !== null
+          ? errorResult.error
+          : { error: errorResult.error }),
+        status,
+        statusCode: status,
+        response: errorResult.response,
+      };
+      throw errorWithStatus;
+    }
+    throw errorResult.error;
+  }
+
+  // If result has data property, use it; otherwise assume result is the data
+  if (result && typeof result === 'object' && 'data' in result) {
+    const dataResult = result as { data?: T };
+    if (dataResult.data) {
+      return dataResult.data;
+    } else {
+      throw new Error('Response has data property but data is undefined');
+    }
+  } else {
+    return result as T;
+  }
+};
+
+/**
+ * Makes an API call with retry logic for rate limiting
+ */
+const makeApiCallWithRetry = async <T>(
+  tidalClient: TidalAPIClient,
+  url: string,
+  options: FetchOptions = {}
+): Promise<T> => {
+  let retryCount = 0;
+  const maxRetries = options.maxRetries || 5;
+
+  while (retryCount < maxRetries) {
+    try {
+      const result = await tidalClient.GET(url);
+      const data = parseApiResponse<T>(result);
+      options.onApiCall?.();
+      return data;
+    } catch (error) {
+      console.log('Exception caught:', error);
+      const shouldRetry = await handleRateLimit(error, retryCount, options);
+      if (!shouldRetry) {
+        throw error;
+      }
+      retryCount++;
+    }
+  }
+
+  throw new Error(`Failed to fetch after ${maxRetries} retries`);
+};
+
+/**
  * Handles 429 rate limit errors with exponential backoff retry logic
  */
 const handleRateLimit = async (
@@ -123,84 +200,17 @@ export const getAllSavedAlbums = async (
   let hasMore = true;
 
   while (hasMore) {
-    let retryCount = 0;
-    let success = false;
-    let response: TidalSavedAlbumResponse | null = null;
+    // Build the URL with cursor if available
+    const url: string =
+      nextUrl ||
+      `/userCollections/${user.id}/relationships/albums?include=albums`;
 
-    // Retry loop for handling rate limits
-    while (!success && retryCount < (options.maxRetries || 5)) {
-      try {
-        // Build the URL with cursor if available
-        const url =
-          nextUrl ||
-          `/userCollections/${user.id}/relationships/albums?include=albums`;
-
-        // openapi-fetch returns { data, error, response } - check for errors
-        const result = (await tidalClient.GET(url)) as
-          | TidalSavedAlbumResponse
-          | {
-              data?: TidalSavedAlbumResponse;
-              error?: unknown;
-              response?: Response;
-            };
-
-        // Check if result has an error property (openapi-fetch pattern)
-        if (result && typeof result === 'object' && 'error' in result) {
-          const errorResult = result as ErrorResponse;
-          if (errorResult.response?.status === 429) {
-            // Extract status from response if available
-            const status = errorResult.response?.status;
-            const errorWithStatus = {
-              ...(typeof errorResult.error === 'object' &&
-              errorResult.error !== null
-                ? errorResult.error
-                : { error: errorResult.error }),
-              status,
-              statusCode: status,
-              response: errorResult.response,
-            };
-
-            const shouldRetry = await handleRateLimit(
-              errorWithStatus,
-              retryCount,
-              options
-            );
-            if (!shouldRetry) {
-              // Not a rate limit error or max retries reached
-              throw errorResult.error;
-            }
-            retryCount++;
-            continue;
-          }
-        }
-
-        // If result has data property, use it; otherwise assume result is the data
-        if (result && typeof result === 'object' && 'data' in result) {
-          const dataResult = result as { data?: TidalSavedAlbumResponse };
-          if (dataResult.data) {
-            response = dataResult.data;
-          } else {
-            throw new Error('Response has data property but data is undefined');
-          }
-        } else {
-          response = result as unknown as TidalSavedAlbumResponse;
-        }
-        success = true;
-        options.onApiCall?.();
-      } catch (error) {
-        console.log('Exception caught:', error);
-        const shouldRetry = await handleRateLimit(error, retryCount, options);
-        if (!shouldRetry) {
-          // Not a rate limit error or max retries reached
-          throw error;
-        }
-        retryCount++;
-      }
-    }
-
-    if (!response) {
-      throw new Error('Failed to fetch albums after retries');
-    }
+    const response: TidalSavedAlbumResponse =
+      await makeApiCallWithRetry<TidalSavedAlbumResponse>(
+        tidalClient,
+        url,
+        options
+      );
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.included || [];
@@ -219,7 +229,7 @@ export const getAllSavedAlbums = async (
 
     // Check if there are more pages
     // Update cursor from response for next iteration
-    const nextCursor = response.links?.next;
+    const nextCursor: string | undefined = response.links?.next;
 
     // Stop if we got no items (no more data)
     if (items.length === 0) {
@@ -269,10 +279,7 @@ export const getAllAlbumArtistIds = async (
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
   // Split allAlbumIds into chunks
-  const chunks: string[][] = [];
-  for (let i = 0; i < allAlbumIds.length; i += CHUNK_SIZE) {
-    chunks.push(allAlbumIds.slice(i, i + CHUNK_SIZE));
-  }
+  const chunks = chunkArray(allAlbumIds, CHUNK_SIZE);
 
   console.log(
     `Processing ${allAlbumIds.length} albums in ${chunks.length} chunks of up to ${CHUNK_SIZE}...`
@@ -281,85 +288,19 @@ export const getAllAlbumArtistIds = async (
   // Process each chunk synchronously
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    let retryCount = 0;
-    let success = false;
-    let response: TidalAlbumResponse | null = null;
+    const url = `/albums?filter[id]=${chunk.join(',')}&include=artists`;
 
-    // Retry loop for handling rate limits
-    while (!success && retryCount < (options.maxRetries || 5)) {
-      try {
-        // Build the URL with the chunk of album IDs
-        const url = `/albums?filter[id]=${chunk.join(',')}&include=artists`;
-
-        // openapi-fetch returns { data, error, response } - check for errors
-        const result = (await tidalClient.GET(url)) as
-          | TidalAlbumResponse
-          | {
-              data?: TidalAlbumResponse;
-              error?: unknown;
-              response?: Response;
-            };
-
-        // Check if result has an error property (openapi-fetch pattern)
-        if (result && typeof result === 'object' && 'error' in result) {
-          const errorResult = result as ErrorResponse;
-          if (errorResult.response?.status === 429) {
-            // Extract status from response if available
-            const status = errorResult.response?.status;
-            const errorWithStatus = {
-              ...(typeof errorResult.error === 'object' &&
-              errorResult.error !== null
-                ? errorResult.error
-                : { error: errorResult.error }),
-              status,
-              statusCode: status,
-              response: errorResult.response,
-            };
-
-            const shouldRetry = await handleRateLimit(
-              errorWithStatus,
-              retryCount,
-              options
-            );
-            if (!shouldRetry) {
-              // Not a rate limit error or max retries reached
-              throw errorResult.error;
-            }
-            retryCount++;
-            continue;
-          }
-        }
-
-        // If result has data property, use it; otherwise assume result is the data
-        if (result && typeof result === 'object' && 'data' in result) {
-          const dataResult = result as { data?: TidalAlbumResponse };
-          if (dataResult.data) {
-            response = dataResult.data;
-          } else {
-            throw new Error('Response has data property but data is undefined');
-          }
-        } else {
-          response = result as unknown as TidalAlbumResponse;
-        }
-        success = true;
-        options.onApiCall?.();
-      } catch (error) {
-        console.log('Exception caught:', error);
-        const shouldRetry = await handleRateLimit(error, retryCount, options);
-        if (!shouldRetry) {
-          // Not a rate limit error or max retries reached
-          throw error;
-        }
-        retryCount++;
-      }
-    }
-
-    if (!response) {
-      throw new Error('Failed to fetch albums after retries');
-    }
+    const response = await makeApiCallWithRetry<TidalAlbumResponse>(
+      tidalClient,
+      url,
+      options
+    );
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.data || [];
+    if (chunkIndex === 0) {
+      console.log('full response', response);
+    }
     localAlbums.push(...items);
 
     // Log progress every 100 albums
@@ -412,10 +353,7 @@ export const getAllArtistAlbums = async (
   const artistAlbumsMap = new Map<string, Album[]>();
 
   // Split artistIds into chunks
-  const chunks: string[][] = [];
-  for (let i = 0; i < artistIds.length; i += CHUNK_SIZE) {
-    chunks.push(artistIds.slice(i, i + CHUNK_SIZE));
-  }
+  const chunks = chunkArray(artistIds, CHUNK_SIZE);
 
   console.log(
     `Processing ${artistIds.length} artists in ${chunks.length} chunks of up to ${CHUNK_SIZE}...`
@@ -423,80 +361,13 @@ export const getAllArtistAlbums = async (
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    let retryCount = 0;
-    let success = false;
-    let response: TidalArtistsResponse | null = null;
+    const url = `/artists?filter[id]=${chunk.join(',')}&include=albums`;
 
-    // Retry loop for handling rate limits
-    while (!success && retryCount < (options.maxRetries || 5)) {
-      try {
-        const url = `/artists?filter[id]=${chunk.join(',')}&include=albums`;
-
-        const result = (await tidalClient.GET(url)) as
-          | TidalArtistsResponse
-          | {
-              data?: TidalArtistsResponse;
-              error?: unknown;
-              response?: Response;
-            };
-
-        // Check if result has an error property (openapi-fetch pattern)
-        if (result && typeof result === 'object' && 'error' in result) {
-          const errorResult = result as ErrorResponse;
-          if (errorResult.response?.status === 429) {
-            // Extract status from response if available
-            const status = errorResult.response?.status;
-            const errorWithStatus = {
-              ...(typeof errorResult.error === 'object' &&
-              errorResult.error !== null
-                ? errorResult.error
-                : { error: errorResult.error }),
-              status,
-              statusCode: status,
-              response: errorResult.response,
-            };
-
-            const shouldRetry = await handleRateLimit(
-              errorWithStatus,
-              retryCount,
-              options
-            );
-            if (!shouldRetry) {
-              // Not a rate limit error or max retries reached
-              throw errorResult.error;
-            }
-            retryCount++;
-            continue;
-          }
-        }
-
-        // If result has data property, use it; otherwise assume result is the data
-        if (result && typeof result === 'object' && 'data' in result) {
-          const dataResult = result as { data?: TidalArtistsResponse };
-          if (dataResult.data) {
-            response = dataResult.data;
-          } else {
-            throw new Error('Response has data property but data is undefined');
-          }
-        } else {
-          response = result as unknown as TidalArtistsResponse;
-        }
-        success = true;
-        options.onApiCall?.();
-      } catch (error) {
-        console.log('Exception caught:', error);
-        const shouldRetry = await handleRateLimit(error, retryCount, options);
-        if (!shouldRetry) {
-          // Not a rate limit error or max retries reached
-          throw error;
-        }
-        retryCount++;
-      }
-    }
-
-    if (!response) {
-      throw new Error('Failed to fetch artists after retries');
-    }
+    const response = await makeApiCallWithRetry<TidalArtistsResponse>(
+      tidalClient,
+      url,
+      options
+    );
 
     const artists = response.data || [];
     if (chunkIndex === 0) {
@@ -504,10 +375,8 @@ export const getAllArtistAlbums = async (
     }
 
     // Log progress every 100 albums
-    if (artistAlbumsMap.keys.length % 100 === 0) {
-      console.log(
-        `Fetched ${artistAlbumsMap.keys.length} artists' albums so far...`
-      );
+    if (artistAlbumsMap.size % 100 === 0) {
+      console.log(`Fetched ${artistAlbumsMap.size} artists' albums so far...`);
     }
 
     const allResponseAlbumsMap = new Map<string, Album>();

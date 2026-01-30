@@ -22,7 +22,7 @@ interface FetchOptions {
 interface AlbumAttributes {
   title: string;
   releaseDate: string;
-  type: string;
+  albumType: string;
 }
 
 export interface SavedAlbum {
@@ -106,7 +106,6 @@ const makeApiCallWithRetry = async <T>(
       options.onApiCall?.();
       return data;
     } catch (error) {
-      console.log('Exception caught:', error);
       const shouldRetry = await handleRateLimit(error, retryCount, options);
       if (!shouldRetry) {
         throw error;
@@ -253,6 +252,14 @@ interface AlbumRelationships {
       id: string;
     }[];
   };
+  coverArt: {
+    data: {
+      id: string;
+    };
+    links: {
+      self: string;
+    };
+  };
 }
 
 export interface Album {
@@ -272,9 +279,10 @@ export const getAllAlbumArtistIds = async (
   tidalClient: TidalAPIClient,
   savedAlbums: SavedAlbum[],
   options: FetchOptions = {}
-): Promise<Map<string, number>> => {
+  // ): Promise<Map<string, number>> => {
+): Promise<Album[]> => {
   const localAlbums: Album[] = [];
-  const artistCountMap = new Map<string, number>();
+  // const artistCountMap = new Map<string, number>();
 
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
@@ -288,7 +296,7 @@ export const getAllAlbumArtistIds = async (
   // Process each chunk synchronously
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    const url = `/albums?filter[id]=${chunk.join(',')}&include=artists`;
+    const url = `/albums?filter[id]=${chunk.join(',')}&include=artists,coverArt`;
 
     const response = await makeApiCallWithRetry<TidalAlbumResponse>(
       tidalClient,
@@ -298,6 +306,7 @@ export const getAllAlbumArtistIds = async (
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.data || [];
+    // TODO find the album art for each album in included using album.relationships.coverArt.data.id to get the id, and use that in included
     if (chunkIndex === 0) {
       console.log('full response', response);
     }
@@ -309,17 +318,18 @@ export const getAllAlbumArtistIds = async (
     }
   }
 
-  // Count albums per artist ID
-  for (const album of localAlbums) {
-    const artistIds = album.relationships?.artists?.data || [];
-    for (const artist of artistIds) {
-      const artistId = artist.id;
-      const currentCount = artistCountMap.get(artistId) || 0;
-      artistCountMap.set(artistId, currentCount + 1);
-    }
-  }
+  return localAlbums;
 
-  return artistCountMap;
+  // for (const album of localAlbums) {
+  //   const artistIds = album.relationships?.artists?.data || [];
+  //   for (const artist of artistIds) {
+  //     const artistId = artist.id;
+  //     const currentCount = artistCountMap.get(artistId) || 0;
+  //     artistCountMap.set(artistId, currentCount + 1);
+  //   }
+  // }
+
+  // return artistCountMap;
 };
 
 interface ArtistAttributes {
@@ -386,11 +396,6 @@ export const getAllArtistAlbums = async (
       console.log('full artist response', response);
     }
 
-    // Store artist information
-    for (const artist of artists) {
-      artistsMap.set(artist.id, artist);
-    }
-
     // Log progress every 100 albums
     if (artistAlbumsMap.size % 100 === 0) {
       console.log(`Fetched ${artistAlbumsMap.size} artists' albums so far...`);
@@ -404,6 +409,8 @@ export const getAllArtistAlbums = async (
     }
 
     for (const artist of artists) {
+      artistsMap.set(artist.id, artist);
+
       if (artist.relationships?.albums?.links?.next) {
         // todo this artist has more albums to retrieve
       }
@@ -413,7 +420,10 @@ export const getAllArtistAlbums = async (
       // TODO instead of getting all albums for the artist, just get the ones in the release date range that we care about
       const albumsForArtist = albumIds
         .map((id) => allResponseAlbumsMap.get(id))
-        .filter((album): album is Album => !!album);
+        .filter(
+          (album): album is Album =>
+            !!album && album.attributes.albumType === 'ALBUM'
+        );
 
       // Remove each of those albums from the allResponseAlbumsMap since they're no longer needed
       for (const album of albumsForArtist) {

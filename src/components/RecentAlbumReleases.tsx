@@ -22,10 +22,11 @@ export default function RecentAlbumReleases({
   recentAlbums,
   albumToArtistsMap,
 }: RecentAlbumReleasesProps) {
-  const getImageHref = (): string | undefined => {
-    // Tidal Album doesn't have images property, return undefined
-    return undefined;
-  };
+  const getImageHref = useCallback(
+    // TODO it appears that the coverArt src is buried somewhere in the `included` response _using_ this id. *sigh
+    (album: Album): string => album.relationships.coverArt.data.id,
+    []
+  );
 
   const getSavedCell = () => {
     // todo handle onClick
@@ -33,7 +34,7 @@ export default function RecentAlbumReleases({
     return <QuestionMark />;
   };
 
-  const getArtistNameMemo = useCallback(
+  const getArtistName = useCallback(
     (album: Album): string => {
       if (!album.id) return 'Unknown Artist';
 
@@ -58,18 +59,17 @@ export default function RecentAlbumReleases({
       {
         header: 'Image',
         accessorFn: getImageHref,
-        cell: () => (
-          <div
+        cell: (props) => (
+          <img
             className={'albumImage'}
-            style={{ width: '64px', height: '64px', backgroundColor: '#ccc' }}
-          >
-            {/* Tidal Album doesn't have images */}
-          </div>
+            src={props.getValue() as string}
+            alt=""
+          />
         ),
       },
       {
         header: 'Artist',
-        accessorFn: getArtistNameMemo,
+        accessorFn: getArtistName,
       },
       {
         header: 'Album Name',
@@ -94,9 +94,10 @@ export default function RecentAlbumReleases({
         cell: getSavedCell,
       },
     ],
-    [getArtistNameMemo]
+    [getArtistName, getImageHref]
   );
 
+  // TODO sort recentAlbums
   const tableOptions = {
     columns,
     data: recentAlbums,

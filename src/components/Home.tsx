@@ -61,6 +61,9 @@ export default function Home() {
   const [currentProcess, setCurrentProcess] = useState<ProcessType>(
     ProcessType.NONE
   );
+  const [albumsWithArtists, setAlbumsWithArtists] = useState<
+    Map<string, Album>
+  >(new Map());
   const [artistsWithAlbums, setArtistsWithAlbums] =
     useState<Map<string, Album[]>>();
   const [artistsMap, setArtistsMap] = useState<Map<string, TidalArtist>>(
@@ -187,21 +190,24 @@ export default function Home() {
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
   const fetchAllAlbumArtistIds = useCallback(
-    async (savedAlbums: SavedAlbum[]): Promise<Map<string, number>> => {
+    // async (savedAlbums: SavedAlbum[]): Promise<Map<string, number>> => {
+    async (savedAlbums: SavedAlbum[]): Promise<Album[]> => {
       if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
         // Check for cached artist counts first
         // Convert array of [key, value] pairs back to Map
-        const cachedArtistCountsArray = getWithExpiry<[string, number][]>(
-          `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`
-        );
 
-        if (cachedArtistCountsArray) {
-          const cachedArtistCounts = new Map<string, number>(
-            cachedArtistCountsArray
-          );
-          console.log('Using cached artist counts:', cachedArtistCounts.size);
-          return cachedArtistCounts;
-        }
+        // TODO get this back if needed
+        // const cachedArtistCountsArray = getWithExpiry<[string, number][]>(
+        //   `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`
+        // );
+
+        // if (cachedArtistCountsArray) {
+        //   const cachedArtistCounts = new Map<string, number>(
+        //     cachedArtistCountsArray
+        //   );
+        //   console.log('Using cached artist counts:', cachedArtistCounts.size);
+        //   return cachedArtistCounts;
+        // }
 
         setIsLoadingAlbums(true);
         setCurrentProcess(ProcessType.FETCHING_ALBUMS);
@@ -222,24 +228,27 @@ export default function Home() {
             Array.from(artistCountMap.entries())
           );
 
-          console.log('retrieved artist counts:', artistCountMap.size);
+          console.log('retrieved artist counts:', artistCountMap.length);
           return artistCountMap;
         } catch (error) {
           console.error('Error fetching album artist IDs from Tidal:', error);
-          return new Map<string, number>();
+          // return new Map<string, number>();
+          return [];
         } finally {
           setIsLoadingAlbums(false);
           setCurrentProcess(ProcessType.NONE);
         }
       }
-      return new Map<string, number>();
+      // return new Map<string, number>();
+      return [];
     },
     [addSavedToQuery, hasLoggedIn, tidalClient, user]
   );
 
   const fetchAllArtistAlbums = useCallback(
     async (
-      artistCountMap: Map<string, number>
+      // artistCountMap: Map<string, number>
+      albumsWithArtists: Album[]
     ): Promise<{
       artistAlbumsMap: Map<string, Album[]>;
       artistsMap: Map<string, TidalArtist>;
@@ -249,6 +258,16 @@ export default function Home() {
           artistAlbumsMap: new Map<string, Album[]>(),
           artistsMap: new Map<string, TidalArtist>(),
         };
+      }
+
+      const artistCountMap = new Map<string, number>();
+      for (const album of albumsWithArtists) {
+        const artistIds = album.relationships?.artists?.data || [];
+        for (const artist of artistIds) {
+          const artistId = artist.id;
+          const currentCount = artistCountMap.get(artistId) || 0;
+          artistCountMap.set(artistId, currentCount + 1);
+        }
       }
 
       const artistIdsWithMultipleAlbums = Array.from(artistCountMap.entries())
@@ -467,11 +486,20 @@ export default function Home() {
         console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
         console.log('retrieving album artist ids');
-        const artistCountMap = await fetchAllAlbumArtistIds(savedAlbums);
+        // const albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
+        const _albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
         // TODO at some point need to save artist Ids to artist names somewhere
-        console.log('retrieved artist counts', artistCountMap);
+        console.log('retrieved albumsWithArtists', _albumsWithArtists);
         console.log('retrieving artist albums');
-        const result = await fetchAllArtistAlbums(artistCountMap);
+        // const result = await fetchAllArtistAlbums(albumsWithArtists);
+        const result = await fetchAllArtistAlbums(_albumsWithArtists);
+        setAlbumsWithArtists(
+          new Map(
+            _albumsWithArtists
+              .filter((album) => album.id)
+              .map((album) => [album.id, album])
+          )
+        );
         setArtistsWithAlbums(result.artistAlbumsMap);
         setArtistsMap(result.artistsMap);
       }
@@ -513,7 +541,8 @@ export default function Home() {
         if (!album.id) return;
 
         // Get all artist IDs from the album's relationships
-        const albumArtistIds = album.relationships?.artists?.data || [];
+        const albumArtistIds =
+          albumsWithArtists.get(album.id)?.relationships?.artists?.data || [];
 
         // Build artist info for all artists associated with this album
         const artistsForAlbum: AlbumArtistInfo[] = [];
@@ -553,7 +582,7 @@ export default function Home() {
     });
 
     return reverseMap;
-  }, [artistsWithAlbums, artistsMap]);
+  }, [artistsWithAlbums, artistsMap, albumsWithArtists]);
 
   // useEffect(() => {
   //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {
@@ -585,8 +614,8 @@ export default function Home() {
             />
           </label>
 
-          {/* <RecentAlbumReleases recentAlbums={filterAlbums(recentAlbums)} /> */}
           <RecentAlbumReleases
+            // recentAlbums={filterAlbums(recentAlbums)}
             recentAlbums={recentAlbums}
             albumToArtistsMap={albumToArtistsMap}
           />

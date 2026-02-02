@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import logo from './tidalLogo.svg';
 import './App.css';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,18 @@ export default function App() {
     }
   }, [hasLoggedIn, navigate]);
 
+  const deleteLocalStorageStuff = useCallback(() => {
+    // Iterate through localStorage keys and remove the ones not starting with "tidal_"
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && !key.startsWith('tidal_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  }, []);
+
   return (
     <div className="App">
       <header className="App-header">
@@ -24,6 +36,9 @@ export default function App() {
         Login
       </button>
       <div>hasLoggedIn: {'' + hasLoggedIn}</div>
+      <button onClick={deleteLocalStorageStuff}>
+        Delete Non-Tidal LocalStorage
+      </button>
     </div>
   );
 }

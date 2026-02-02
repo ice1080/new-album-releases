@@ -15,16 +15,15 @@ interface AlbumArtistInfo {
 
 interface RecentAlbumReleasesProps {
   recentAlbums: Album[];
-  albumToArtistsMap: Map<string, AlbumArtistInfo[]>;
+  albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
 }
 
 export default function RecentAlbumReleases({
   recentAlbums,
-  albumToArtistsMap,
+  albumIdToArtistsMap,
 }: RecentAlbumReleasesProps) {
   const getImageHref = useCallback(
-    // TODO it appears that the coverArt src is buried somewhere in the `included` response _using_ this id. *sigh
-    (album: Album): string => album.relationships.coverArt.data.id,
+    (album: Album): string => album.coverArtFiles?.at(-1)?.href || '',
     []
   );
 
@@ -36,9 +35,9 @@ export default function RecentAlbumReleases({
 
   const getArtistName = useCallback(
     (album: Album): string => {
-      if (!album.id) return 'Unknown Artist';
+      if (!album.id) return 'Unknown Album?';
 
-      const artists = albumToArtistsMap.get(album.id);
+      const artists = albumIdToArtistsMap.get(album.id);
       if (artists && artists.length > 0) {
         return artists.map((artist) => artist.name).join(', ');
       }
@@ -51,7 +50,7 @@ export default function RecentAlbumReleases({
 
       return 'Unknown Artist';
     },
-    [albumToArtistsMap]
+    [albumIdToArtistsMap]
   );
 
   const columns = useMemo<ColumnDef<Album>[]>(
@@ -97,17 +96,28 @@ export default function RecentAlbumReleases({
     [getArtistName, getImageHref]
   );
 
-  // TODO sort recentAlbums
+  const sortedRecentAlbums = useMemo(() => {
+    if (!recentAlbums) return [];
+    return [...recentAlbums].sort((a, b) => {
+      // Handle possible missing releaseDate (newest first)
+      const dateA = a.attributes?.releaseDate
+        ? new Date(a.attributes.releaseDate).getTime()
+        : 0;
+      const dateB = b.attributes?.releaseDate
+        ? new Date(b.attributes.releaseDate).getTime()
+        : 0;
+      // Descending: latest first
+      return dateB - dateA;
+    });
+  }, [recentAlbums]);
+
   const tableOptions = {
     columns,
-    data: recentAlbums,
+    data: sortedRecentAlbums,
     getCoreRowModel: getCoreRowModel(),
   };
   const tableInstance = useReactTable(tableOptions);
 
-  /* recentAlbums && */
-  /* recentAlbums.length && */
-  /* console.log("recent albums render:", recentAlbums); */
   return (
     <>
       <h1>Recent Album Releases ({recentAlbums.length} total)</h1>

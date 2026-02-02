@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
 import {
   Album,
-  getAllAlbumArtistIds,
+  addArtistsToAlbums,
   getAllArtistAlbums,
   getAllSavedAlbums,
   SavedAlbum,
@@ -12,14 +12,7 @@ import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
 import LoadingIcon from './LoadingIcon';
-import TopArtists from './TopArtists';
 import RecentAlbumReleases from './RecentAlbumReleases';
-
-interface Artist {
-  name: string;
-  id?: string;
-  [key: string]: unknown;
-}
 
 interface AlbumArtistInfo {
   id: string;
@@ -27,7 +20,7 @@ interface AlbumArtistInfo {
 }
 
 const SAVED_ALBUMS_STORAGE_KEY = 'tidal_saved_albums';
-const ALBUM_ARTIST_IDS_STORAGE_KEY = 'tidal_album_artist_ids';
+const ALBUMS_WITH_ARTISTS_STORAGE_KEY = 'tidal_albums_with_artists';
 const ARTIST_ALBUMS_STORAGE_KEY = 'tidal_artist_albums';
 
 /**
@@ -43,17 +36,17 @@ const canFetch = (
 };
 
 export default function Home() {
-  const ARTISTS_VIEW = 'artists';
-  const ALBUMS_VIEW = 'albums';
+  // const ARTISTS_VIEW = 'artists';
+  // const ALBUMS_VIEW = 'albums';
   // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
   const CUTOFF_DAYS_AGO = 250;
 
-  const [topArtists] = useState<Artist[]>([]);
+  // const [topArtists] = useState<Artist[]>([]);
   // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
   // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
   const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
   const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
-  const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
+  // const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoadingSavedAlbums, setIsLoadingSavedAlbums] =
     useState<boolean>(false);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState<boolean>(false);
@@ -190,30 +183,26 @@ export default function Home() {
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
   const fetchAllAlbumArtistIds = useCallback(
-    // async (savedAlbums: SavedAlbum[]): Promise<Map<string, number>> => {
     async (savedAlbums: SavedAlbum[]): Promise<Album[]> => {
       if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
         // Check for cached artist counts first
-        // Convert array of [key, value] pairs back to Map
+        const cachedArtistCountsArray = getWithExpiry<Album[]>(
+          `${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`
+        );
 
-        // TODO get this back if needed
-        // const cachedArtistCountsArray = getWithExpiry<[string, number][]>(
-        //   `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`
-        // );
-
-        // if (cachedArtistCountsArray) {
-        //   const cachedArtistCounts = new Map<string, number>(
-        //     cachedArtistCountsArray
-        //   );
-        //   console.log('Using cached artist counts:', cachedArtistCounts.size);
-        //   return cachedArtistCounts;
-        // }
+        if (cachedArtistCountsArray) {
+          console.log(
+            'Using cached albums with artists:',
+            cachedArtistCountsArray.length
+          );
+          return cachedArtistCountsArray;
+        }
 
         setIsLoadingAlbums(true);
         setCurrentProcess(ProcessType.FETCHING_ALBUMS);
 
         try {
-          const artistCountMap = await getAllAlbumArtistIds(
+          const albumsWithArtists = await addArtistsToAlbums(
             tidalClient,
             savedAlbums,
             {
@@ -221,25 +210,25 @@ export default function Home() {
             }
           );
 
-          // Store artist counts in localStorage with expiry
-          // Convert Map to array of [key, value] pairs for storage
+          // Store albums with artists in localStorage
           setWithExpiry(
-            `${ALBUM_ARTIST_IDS_STORAGE_KEY}_${user.id}`,
-            Array.from(artistCountMap.entries())
+            `${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`,
+            albumsWithArtists
           );
 
-          console.log('retrieved artist counts:', artistCountMap.length);
-          return artistCountMap;
+          console.log(
+            'retrieved albums with artists:',
+            albumsWithArtists.length
+          );
+          return albumsWithArtists;
         } catch (error) {
           console.error('Error fetching album artist IDs from Tidal:', error);
-          // return new Map<string, number>();
           return [];
         } finally {
           setIsLoadingAlbums(false);
           setCurrentProcess(ProcessType.NONE);
         }
       }
-      // return new Map<string, number>();
       return [];
     },
     [addSavedToQuery, hasLoggedIn, tidalClient, user]
@@ -247,7 +236,6 @@ export default function Home() {
 
   const fetchAllArtistAlbums = useCallback(
     async (
-      // artistCountMap: Map<string, number>
       albumsWithArtists: Album[]
     ): Promise<{
       artistAlbumsMap: Map<string, Album[]>;
@@ -486,12 +474,10 @@ export default function Home() {
         console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
         console.log('retrieving album artist ids');
-        // const albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
         const _albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
         // TODO at some point need to save artist Ids to artist names somewhere
         console.log('retrieved albumsWithArtists', _albumsWithArtists);
         console.log('retrieving artist albums');
-        // const result = await fetchAllArtistAlbums(albumsWithArtists);
         const result = await fetchAllArtistAlbums(_albumsWithArtists);
         setAlbumsWithArtists(
           new Map(
@@ -514,7 +500,7 @@ export default function Home() {
   ]);
 
   const recentAlbums: Album[] = useMemo(() => {
-    let _recentAlbums: Album[] = [];
+    let output: Album[] = [];
 
     artistsWithAlbums?.forEach((albums) => {
       if (Array.isArray(albums)) {
@@ -523,17 +509,21 @@ export default function Home() {
           if (releaseDateValue) {
             const albumReleaseDate = new Date(releaseDateValue);
             if (albumReleaseDate >= cutoffDate) {
-              _recentAlbums.push(album);
+              const modifiedAlbum = {
+                ...album,
+                coverArtFiles: albumsWithArtists.get(album.id)?.coverArtFiles,
+              };
+              output.push(modifiedAlbum);
             }
           }
         });
       }
     });
 
-    return _recentAlbums;
-  }, [artistsWithAlbums, cutoffDate]);
+    return output;
+  }, [artistsWithAlbums, cutoffDate, albumsWithArtists]);
 
-  const albumToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
+  const albumIdToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
     const reverseMap = new Map<string, AlbumArtistInfo[]>();
 
     artistsWithAlbums?.forEach((albums, artistId) => {
@@ -591,58 +581,62 @@ export default function Home() {
   // }, [recentAlbums, showMySavedAlbums]);
 
   const renderCurrentView = () => {
-    if (currentView === 'artists') {
-      return <TopArtists topArtists={topArtists} />;
-    } else if (currentView === 'albums') {
-      return (
-        <>
-          <label>
-            Add all saved albums to list of artists to query for new releases:
-            <input
-              type={'checkbox'}
-              onChange={() => setAddSavedToQuery(!addSavedToQuery)}
-              checked={addSavedToQuery}
-            />
-          </label>
-          <br />
-          <label>
-            Show My Saved Albums:
-            <input
-              type={'checkbox'}
-              onChange={() => setShowMySavedAlbums(!showMySavedAlbums)}
-              checked={showMySavedAlbums}
-            />
-          </label>
-
-          <RecentAlbumReleases
-            // recentAlbums={filterAlbums(recentAlbums)}
-            recentAlbums={recentAlbums}
-            albumToArtistsMap={albumToArtistsMap}
-          />
-        </>
-      );
-    }
-    return null;
-  };
-
-  const renderViewSelector = () => {
+    // if (currentView === 'artists') {
+    //   return <TopArtists topArtists={topArtists} />;
+    // } else if (currentView === 'albums') {
     return (
       <>
-        <button onClick={() => setCurrentView(ALBUMS_VIEW)}>
-          Recent Albums
-        </button>
-        <button onClick={() => setCurrentView(ARTISTS_VIEW)}>
-          Top Artists
-        </button>
+        <label>
+          Add all saved albums to list of artists to query for new releases:
+          <input
+            type={'checkbox'}
+            onChange={() => setAddSavedToQuery(!addSavedToQuery)}
+            checked={addSavedToQuery}
+          />
+        </label>
         <br />
+        <label>
+          Show My Saved Albums:
+          <input
+            type={'checkbox'}
+            onChange={() => setShowMySavedAlbums(!showMySavedAlbums)}
+            checked={showMySavedAlbums}
+          />
+        </label>
+
+        <RecentAlbumReleases
+          // recentAlbums={filterAlbums(recentAlbums)}
+          recentAlbums={recentAlbums}
+          albumIdToArtistsMap={albumIdToArtistsMap}
+        />
       </>
     );
+    // }
+    // return null;
   };
+
+  // const renderViewSelector = () => {
+  //   return (
+  //     <>
+  //       <button onClick={() => setCurrentView(ALBUMS_VIEW)}>
+  //         Recent Albums
+  //       </button>
+  //       <button onClick={() => setCurrentView(ARTISTS_VIEW)}>
+  //         Top Artists
+  //       </button>
+  //       <br />
+  //     </>
+  //   );
+  // };
+
+  const isLoading = useMemo(() => {
+    return isLoadingSavedAlbums || isLoadingAlbums;
+  }, [isLoadingSavedAlbums, isLoadingAlbums]);
 
   return (
     <>
-      {renderViewSelector()}
-      <LoadingIcon isLoading={isLoadingSavedAlbums || isLoadingAlbums} />
+      {/* {renderViewSelector()} */}
+      <LoadingIcon isLoading={isLoading} />
       <ApiCount apiCount={apiCount} />
       <CurrentProcess process={currentProcess} />
       {renderCurrentView()}

@@ -1,5 +1,4 @@
-// TODO what was this for?
-// const MAX_SAVED_ALBUMS = 100;
+const MAX_SAVED_ALBUMS = 100;
 const CHUNK_SIZE = 20;
 
 interface TidalAPIClient {
@@ -181,9 +180,9 @@ const handleRateLimit = async (
 
   const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : delay;
 
-  console.warn(
-    `Rate limit hit (429). Retrying in ${waitTime}ms (attempt ${retryCount + 1}/${maxRetries})`
-  );
+  // console.warn(
+  //   `Rate limit hit (429). Retrying in ${waitTime}ms (attempt ${retryCount + 1}/${maxRetries})`
+  // );
 
   await new Promise((resolve) => setTimeout(resolve, waitTime));
   return true;
@@ -221,10 +220,10 @@ export const getAllSavedAlbums = async (
     }
 
     // TODO remove this eventually
-    // if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
-    //   hasMore = false;
-    //   continue;
-    // }
+    if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
+      hasMore = false;
+      continue;
+    }
 
     // Check if there are more pages
     // Update cursor from response for next iteration
@@ -255,35 +254,49 @@ interface AlbumRelationships {
   coverArt: {
     data: {
       id: string;
-    };
+    }[];
     links: {
       self: string;
     };
   };
 }
 
+interface CoverArtFile {
+  href: string;
+  meta: {
+    width: number;
+    height: number;
+  };
+}
+
 export interface Album {
   id: string;
+  coverArtFiles?: CoverArtFile[];
   attributes: AlbumAttributes;
   relationships: AlbumRelationships;
 }
 
+export interface IncludedCoverArt {
+  id: string;
+  type: 'artworks';
+  attributes: {
+    files: CoverArtFile[];
+  };
+}
+
 interface TidalAlbumResponse {
   data?: Album[];
-  included?: string[];
+  included?: IncludedCoverArt[];
   links: { next?: string };
   [key: string]: unknown;
 }
 
-export const getAllAlbumArtistIds = async (
+export const addArtistsToAlbums = async (
   tidalClient: TidalAPIClient,
   savedAlbums: SavedAlbum[],
   options: FetchOptions = {}
-  // ): Promise<Map<string, number>> => {
 ): Promise<Album[]> => {
   const localAlbums: Album[] = [];
-  // const artistCountMap = new Map<string, number>();
-
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
   // Split allAlbumIds into chunks
@@ -306,30 +319,42 @@ export const getAllAlbumArtistIds = async (
 
     // Tidal API returns items directly or in a data/items structure
     const items = response.data || [];
-    // TODO find the album art for each album in included using album.relationships.coverArt.data.id to get the id, and use that in included
+    const included = response.included || [];
     if (chunkIndex === 0) {
-      console.log('full response', response);
+      console.log(
+        'full response',
+        response,
+        included,
+        included.find(
+          (item) => item.id === items[0].relationships.coverArt.data[0]?.id
+        )
+      );
     }
-    localAlbums.push(...items);
+
+    localAlbums.push(
+      ...items.map((album) => {
+        return {
+          ...album,
+          coverArtFiles:
+            included.find(
+              (item) => item.id === album.relationships.coverArt.data[0]?.id
+            )?.attributes?.files || [],
+        };
+      })
+    );
 
     // Log progress every 100 albums
     if (localAlbums.length % 100 === 0) {
       console.log(`Fetched ${localAlbums.length} albums so far...`);
     }
+
+    // TODO remove this eventually
+    if (localAlbums.length > MAX_SAVED_ALBUMS) {
+      break;
+    }
   }
 
   return localAlbums;
-
-  // for (const album of localAlbums) {
-  //   const artistIds = album.relationships?.artists?.data || [];
-  //   for (const artist of artistIds) {
-  //     const artistId = artist.id;
-  //     const currentCount = artistCountMap.get(artistId) || 0;
-  //     artistCountMap.set(artistId, currentCount + 1);
-  //   }
-  // }
-
-  // return artistCountMap;
 };
 
 interface ArtistAttributes {

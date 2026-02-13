@@ -1,4 +1,4 @@
-const MAX_SAVED_ALBUMS = 100;
+const MAX_SAVED_ALBUMS = 200;
 const CHUNK_SIZE = 20;
 
 interface TidalAPIClient {
@@ -276,6 +276,16 @@ export interface Album {
   relationships: AlbumRelationships;
 }
 
+export interface AlbumWithArtist extends Album {
+  artist?: IncludedArtist;
+}
+
+export interface IncludedArtist {
+  id: string;
+  type: 'artists';
+  attributes: ArtistAttributes;
+}
+
 export interface IncludedCoverArt {
   id: string;
   type: 'artworks';
@@ -286,7 +296,7 @@ export interface IncludedCoverArt {
 
 interface TidalAlbumResponse {
   data?: Album[];
-  included?: IncludedCoverArt[];
+  included?: (IncludedCoverArt | IncludedArtist)[];
   links: { next?: string };
   [key: string]: unknown;
 }
@@ -295,8 +305,8 @@ export const addArtistsToAlbums = async (
   tidalClient: TidalAPIClient,
   savedAlbums: SavedAlbum[],
   options: FetchOptions = {}
-): Promise<Album[]> => {
-  const localAlbums: Album[] = [];
+): Promise<AlbumWithArtist[]> => {
+  const localAlbums: AlbumWithArtist[] = [];
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
   // Split allAlbumIds into chunks
@@ -317,7 +327,6 @@ export const addArtistsToAlbums = async (
       options
     );
 
-    // Tidal API returns items directly or in a data/items structure
     const items = response.data || [];
     const included = response.included || [];
     if (chunkIndex === 0) {
@@ -326,7 +335,7 @@ export const addArtistsToAlbums = async (
         response,
         included,
         included.find(
-          (item) => item.id === items[0].relationships.coverArt.data[0]?.id
+          (item) => item.id === items[0].relationships.artists.data[0]?.id
         )
       );
     }
@@ -335,11 +344,18 @@ export const addArtistsToAlbums = async (
       ...items.map((album) => {
         return {
           ...album,
+          artist: included.find(
+            (item) =>
+              item.type === 'artists' &&
+              item.id === album.relationships.artists.data[0]?.id
+          ),
           coverArtFiles:
             included.find(
-              (item) => item.id === album.relationships.coverArt.data[0]?.id
+              (item) =>
+                item.type === 'artworks' &&
+                item.id === album.relationships.coverArt.data[0]?.id
             )?.attributes?.files || [],
-        };
+        } as AlbumWithArtist; // TOOD would be nice if I didn't have to manually type this
       })
     );
 
@@ -387,7 +403,7 @@ interface TidalArtistsResponse {
 }
 
 export interface ArtistAlbumsResult {
-  artistAlbumsMap: Map<string, Album[]>;
+  artistAlbumsMap: Map<string, AlbumWithArtist[]>;
   artistsMap: Map<string, TidalArtist>;
 }
 
@@ -396,7 +412,7 @@ export const getAllArtistAlbums = async (
   artistIds: string[],
   options: FetchOptions = {}
 ): Promise<ArtistAlbumsResult> => {
-  const artistAlbumsMap = new Map<string, Album[]>();
+  const artistAlbumsMap = new Map<string, AlbumWithArtist[]>();
   const artistsMap = new Map<string, TidalArtist>();
 
   // Split artistIds into chunks
@@ -426,7 +442,7 @@ export const getAllArtistAlbums = async (
       console.log(`Fetched ${artistAlbumsMap.size} artists' albums so far...`);
     }
 
-    const allResponseAlbumsMap = new Map<string, Album>();
+    const allResponseAlbumsMap = new Map<string, AlbumWithArtist>();
     for (const album of response.included || []) {
       if (album.id) {
         allResponseAlbumsMap.set(album.id, album);

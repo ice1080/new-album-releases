@@ -14,7 +14,7 @@ export default function App() {
     }
   }, [hasLoggedIn, navigate]);
 
-  const deleteLocalStorageStuff = useCallback(() => {
+  const deleteTidalLocalStorage = useCallback(() => {
     // Iterate through localStorage keys and remove the ones not starting with "tidal_"
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -24,6 +24,10 @@ export default function App() {
       }
     }
     keysToRemove.forEach((key) => localStorage.removeItem(key));
+  }, []);
+
+  const deleteAllLocalStorage = useCallback(() => {
+    localStorage.clear();
   }, []);
 
   return (
@@ -36,9 +40,10 @@ export default function App() {
         Login
       </button>
       <div>hasLoggedIn: {'' + hasLoggedIn}</div>
-      <button onClick={deleteLocalStorageStuff}>
-        Delete Non-Tidal LocalStorage
+      <button onClick={deleteTidalLocalStorage}>
+        Reset Tidal LocalStorage
       </button>
+      <button onClick={deleteAllLocalStorage}>Reset All LocalStorage</button>
     </div>
   );
 }

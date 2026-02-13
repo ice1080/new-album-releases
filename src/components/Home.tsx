@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
+import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import {
-  Album,
   addArtistsToAlbums,
+  AlbumWithArtist,
   getAllArtistAlbums,
   getAllSavedAlbums,
   SavedAlbum,
   TidalArtist,
 } from '../utils/tidal';
-import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
 import LoadingIcon from './LoadingIcon';
@@ -55,10 +55,10 @@ export default function Home() {
     ProcessType.NONE
   );
   const [albumsWithArtists, setAlbumsWithArtists] = useState<
-    Map<string, Album>
+    Map<string, AlbumWithArtist>
   >(new Map());
   const [artistsWithAlbums, setArtistsWithAlbums] =
-    useState<Map<string, Album[]>>();
+    useState<Map<string, AlbumWithArtist[]>>();
   const [artistsMap, setArtistsMap] = useState<Map<string, TidalArtist>>(
     new Map()
   );
@@ -132,46 +132,6 @@ export default function Home() {
         );
 
         return localSavedAlbums;
-
-        // TODO move to new method
-        // const artistSavedAlbumCount: Record<
-        //   string,
-        //   { count: number; artist: Artist }
-        // > = {};
-        // const minSavedCountArtists = new Set<Artist>();
-        // localSavedAlbums.forEach((album) => {
-        //   // Tidal API may have artists in different structure
-        //   const artists =
-        //     album.artists ||
-        //     (Array.isArray(album.artist)
-        //       ? album.artist
-        //       : album.artist
-        //         ? [album.artist]
-        //         : []);
-        //   artists.forEach((artist) => {
-        //     const artistName = (artist as Artist).name || String(artist);
-        //     let newCount = 1;
-        //     if (artistSavedAlbumCount[artistName]) {
-        //       newCount = artistSavedAlbumCount[artistName].count + 1;
-        //       artistSavedAlbumCount[artistName].count = newCount;
-        //     } else {
-        //       artistSavedAlbumCount[artistName] = {
-        //         count: newCount,
-        //         artist: artist as Artist,
-        //       };
-        //     }
-        //     if (newCount === ARTIST_MIN_SAVED_ALBUM_COUNT) {
-        //       minSavedCountArtists.add(artist as Artist);
-        //     }
-        //   });
-        // });
-
-        // console.log(
-        //   'savedAlbumArtists',
-        //   minSavedCountArtists,
-        //   minSavedCountArtists.size
-        // );
-        // setSavedAlbumArtists(Array.from(minSavedCountArtists));
       } catch (error) {
         console.error('Error fetching saved albums from Tidal:', error);
       } finally {
@@ -183,10 +143,10 @@ export default function Home() {
   }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
 
   const fetchAllAlbumArtistIds = useCallback(
-    async (savedAlbums: SavedAlbum[]): Promise<Album[]> => {
+    async (savedAlbums: SavedAlbum[]): Promise<AlbumWithArtist[]> => {
       if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
         // Check for cached artist counts first
-        const cachedArtistCountsArray = getWithExpiry<Album[]>(
+        const cachedArtistCountsArray = getWithExpiry<AlbumWithArtist[]>(
           `${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`
         );
 
@@ -236,14 +196,14 @@ export default function Home() {
 
   const fetchAllArtistAlbums = useCallback(
     async (
-      albumsWithArtists: Album[]
+      albumsWithArtists: AlbumWithArtist[]
     ): Promise<{
-      artistAlbumsMap: Map<string, Album[]>;
+      artistAlbumsMap: Map<string, AlbumWithArtist[]>;
       artistsMap: Map<string, TidalArtist>;
     }> => {
       if (!canFetch(addSavedToQuery, tidalClient, hasLoggedIn, user)) {
         return {
-          artistAlbumsMap: new Map<string, Album[]>(),
+          artistAlbumsMap: new Map<string, AlbumWithArtist[]>(),
           artistsMap: new Map<string, TidalArtist>(),
         };
       }
@@ -265,7 +225,7 @@ export default function Home() {
       if (artistIdsWithMultipleAlbums.length === 0) {
         console.log('No artists with multiple saved albums found.');
         return {
-          artistAlbumsMap: new Map<string, Album[]>(),
+          artistAlbumsMap: new Map<string, AlbumWithArtist[]>(),
           artistsMap: new Map<string, TidalArtist>(),
         };
       }
@@ -273,12 +233,12 @@ export default function Home() {
       // Check for cached artist albums first
       const artistAlbumsCacheKey = `${ARTIST_ALBUMS_STORAGE_KEY}_${(user as { id: string }).id}`;
       const cachedArtistAlbums = getWithExpiry<{
-        artistAlbumsEntries: [string, Album[]][];
+        artistAlbumsEntries: [string, AlbumWithArtist[]][];
         artistsEntries: [string, TidalArtist][];
       }>(artistAlbumsCacheKey);
 
       if (cachedArtistAlbums) {
-        const cachedArtistAlbumsMap = new Map<string, Album[]>(
+        const cachedArtistAlbumsMap = new Map<string, AlbumWithArtist[]>(
           cachedArtistAlbums.artistAlbumsEntries
         );
         const cachedArtistsMap = new Map<string, TidalArtist>(
@@ -321,7 +281,7 @@ export default function Home() {
       } catch (error) {
         console.error('Error fetching artist albums from Tidal:', error);
         return {
-          artistAlbumsMap: new Map<string, Album[]>(),
+          artistAlbumsMap: new Map<string, AlbumWithArtist[]>(),
           artistsMap: new Map<string, TidalArtist>(),
         };
       } finally {
@@ -471,13 +431,13 @@ export default function Home() {
   useEffect(() => {
     const asyncMethod = async () => {
       if (hasLoggedIn && addSavedToQuery) {
-        console.log('retrieving albums');
+        // console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
-        console.log('retrieving album artist ids');
+        // console.log('retrieving album artist ids');
         const _albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
         // TODO at some point need to save artist Ids to artist names somewhere
         console.log('retrieved albumsWithArtists', _albumsWithArtists);
-        console.log('retrieving artist albums');
+        // console.log('retrieving artist albums');
         const result = await fetchAllArtistAlbums(_albumsWithArtists);
         setAlbumsWithArtists(
           new Map(
@@ -499,8 +459,8 @@ export default function Home() {
     fetchAllArtistAlbums,
   ]);
 
-  const recentAlbums: Album[] = useMemo(() => {
-    let output: Album[] = [];
+  const recentAlbums: AlbumWithArtist[] = useMemo(() => {
+    let output: AlbumWithArtist[] = [];
 
     artistsWithAlbums?.forEach((albums) => {
       if (Array.isArray(albums)) {
@@ -511,6 +471,7 @@ export default function Home() {
             if (albumReleaseDate >= cutoffDate) {
               const modifiedAlbum = {
                 ...album,
+                artist: albumsWithArtists.get(album.id)?.artist,
                 coverArtFiles: albumsWithArtists.get(album.id)?.coverArtFiles,
               };
               output.push(modifiedAlbum);

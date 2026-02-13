@@ -1,12 +1,12 @@
-import React, { useMemo, useCallback } from 'react';
+import QuestionMark from '@mui/icons-material/QuestionMark';
 import {
-  useReactTable,
+  ColumnDef,
   flexRender,
   getCoreRowModel,
-  ColumnDef,
+  useReactTable,
 } from '@tanstack/react-table';
-import QuestionMark from '@mui/icons-material/QuestionMark';
-import { Album } from '../utils/tidal';
+import { useCallback, useMemo } from 'react';
+import { AlbumWithArtist } from '../utils/tidal';
 
 interface AlbumArtistInfo {
   id: string;
@@ -14,7 +14,7 @@ interface AlbumArtistInfo {
 }
 
 interface RecentAlbumReleasesProps {
-  recentAlbums: Album[];
+  recentAlbums: AlbumWithArtist[];
   albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
 }
 
@@ -23,19 +23,23 @@ export default function RecentAlbumReleases({
   albumIdToArtistsMap,
 }: RecentAlbumReleasesProps) {
   const getImageHref = useCallback(
-    (album: Album): string => album.coverArtFiles?.at(-1)?.href || '',
+    (album: AlbumWithArtist): string => album.coverArtFiles?.at(-1)?.href || '',
     []
   );
 
   const getSavedCell = () => {
-    // todo handle onClick
+    // TODO handle onClick (first have to determine what albums are saved already)
     // Tidal Album doesn't have isAlbumSaved property, so always show undefined/question mark
     return <QuestionMark />;
   };
 
   const getArtistName = useCallback(
-    (album: Album): string => {
+    (album: AlbumWithArtist): string => {
       if (!album.id) return 'Unknown Album?';
+
+      if (album.artist) {
+        return album.artist.attributes.name;
+      }
 
       const artists = albumIdToArtistsMap.get(album.id);
       if (artists && artists.length > 0) {
@@ -48,12 +52,12 @@ export default function RecentAlbumReleases({
         return artistIds.map((artist) => artist.id).join(', ');
       }
 
-      return 'Unknown Artist';
+      return 'Unknown Artist(s)';
     },
     [albumIdToArtistsMap]
   );
 
-  const columns = useMemo<ColumnDef<Album>[]>(
+  const columns = useMemo<ColumnDef<AlbumWithArtist>[]>(
     () => [
       {
         header: 'Image',

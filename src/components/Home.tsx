@@ -8,6 +8,8 @@ import {
   getAllSavedAlbums,
   SavedAlbum,
   TidalArtist,
+  ArtistsType,
+  ArtistAttributes,
 } from '../utils/tidal';
 import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
@@ -382,7 +384,7 @@ export default function Home() {
   }, []);
 
   // const isDuplicateAlbum = (album1, album2) => {
-  //   // todo figure out a better way to display duplicate albums
+  //   // TODO figure out a better way to display duplicate albums
   //   return (
   //     album1.id === album2.id
   //     /* || */
@@ -446,6 +448,7 @@ export default function Home() {
               .map((album) => [album.id, album])
           )
         );
+        console.log('retrieved artistsWithAlbums', result.artistAlbumsMap);
         setArtistsWithAlbums(result.artistAlbumsMap);
         setArtistsMap(result.artistsMap);
       }
@@ -462,7 +465,7 @@ export default function Home() {
   const recentAlbums: AlbumWithArtist[] = useMemo(() => {
     let output: AlbumWithArtist[] = [];
 
-    artistsWithAlbums?.forEach((albums) => {
+    artistsWithAlbums?.forEach((albums, artistId) => {
       if (Array.isArray(albums)) {
         albums.forEach((album) => {
           let releaseDateValue = album.attributes?.releaseDate;
@@ -471,7 +474,13 @@ export default function Home() {
             if (albumReleaseDate >= cutoffDate) {
               const modifiedAlbum = {
                 ...album,
-                artist: albumsWithArtists.get(album.id)?.artist,
+                artist: {
+                  id: artistId,
+                  attributes:
+                    artistsMap.get(artistId)?.attributes ||
+                    ({} as ArtistAttributes),
+                  type: 'artists' as ArtistsType,
+                },
                 coverArtFiles: albumsWithArtists.get(album.id)?.coverArtFiles,
               };
               output.push(modifiedAlbum);
@@ -482,7 +491,7 @@ export default function Home() {
     });
 
     return output;
-  }, [artistsWithAlbums, cutoffDate, albumsWithArtists]);
+  }, [artistsWithAlbums, cutoffDate, albumsWithArtists, artistsMap]);
 
   const albumIdToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
     const reverseMap = new Map<string, AlbumArtistInfo[]>();

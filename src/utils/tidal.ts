@@ -40,6 +40,8 @@ interface ErrorResponse {
   response?: Response | { status?: number; statusCode?: number };
 }
 
+export type ArtistsType = 'artists';
+
 /**
  * Splits an array into chunks of a specified size
  */
@@ -219,7 +221,7 @@ export const getAllSavedAlbums = async (
       console.log(`Fetched ${localSavedAlbums.length} albums so far...`);
     }
 
-    // TODO remove this eventually
+    // TODO remove this eventually or set to Infinity
     if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
       hasMore = false;
       continue;
@@ -282,7 +284,7 @@ export interface AlbumWithArtist extends Album {
 
 export interface IncludedArtist {
   id: string;
-  type: 'artists';
+  type: ArtistsType;
   attributes: ArtistAttributes;
 }
 
@@ -340,6 +342,8 @@ export const addArtistsToAlbums = async (
       );
     }
 
+    // TODO figure out how to remove duplicates - perhaps same name by same artist? - prefer explicit if it exists
+    // TODO change this to list of artists perhaps? how do we find out which is the primary artist of an album?
     localAlbums.push(
       ...items.map((album) => {
         return {
@@ -373,7 +377,7 @@ export const addArtistsToAlbums = async (
   return localAlbums;
 };
 
-interface ArtistAttributes {
+export interface ArtistAttributes {
   name: string;
   [key: string]: unknown;
 }

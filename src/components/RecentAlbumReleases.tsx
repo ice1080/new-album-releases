@@ -38,7 +38,7 @@ export default function RecentAlbumReleases({
       if (!album.id) return 'Unknown Album?';
 
       if (album.artist) {
-        return album.artist.attributes.name;
+        return `${album.artist.attributes.name} (${album.artist?.id})`;
       }
 
       const artists = albumIdToArtistsMap.get(album.id);
@@ -76,7 +76,8 @@ export default function RecentAlbumReleases({
       },
       {
         header: 'Album Name',
-        accessorFn: (album) => album.attributes?.title || 'Unknown',
+        accessorFn: (album) =>
+          `${album.attributes?.title} (${album.id})` || 'Unknown',
       },
       {
         header: 'Date Released',

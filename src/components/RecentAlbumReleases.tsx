@@ -3,9 +3,10 @@ import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
+  VisibilityState,
   useReactTable,
 } from '@tanstack/react-table';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlbumWithArtist } from '../utils/tidal';
 
 interface AlbumArtistInfo {
@@ -16,11 +17,13 @@ interface AlbumArtistInfo {
 interface RecentAlbumReleasesProps {
   recentAlbums: AlbumWithArtist[];
   albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
+  showMySavedAlbums: boolean;
 }
 
 export default function RecentAlbumReleases({
   recentAlbums,
   albumIdToArtistsMap,
+  showMySavedAlbums,
 }: RecentAlbumReleasesProps) {
   const getImageHref = useCallback(
     (album: AlbumWithArtist): string => album.coverArtFiles?.at(-1)?.href || '',
@@ -93,6 +96,7 @@ export default function RecentAlbumReleases({
         },
       },
       {
+        id: 'saved',
         header: 'Saved',
         accessorFn: () => undefined,
         cell: getSavedCell,
@@ -116,10 +120,27 @@ export default function RecentAlbumReleases({
     });
   }, [recentAlbums]);
 
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    () => ({
+      saved: showMySavedAlbums,
+    })
+  );
+
+  useEffect(() => {
+    setColumnVisibility((prev: VisibilityState) => ({
+      ...prev,
+      saved: showMySavedAlbums,
+    }));
+  }, [showMySavedAlbums]);
+
   const tableOptions = {
     columns,
     data: sortedRecentAlbums,
     getCoreRowModel: getCoreRowModel(),
+    state: {
+      columnVisibility,
+    },
+    onColumnVisibilityChange: setColumnVisibility,
   };
   const tableInstance = useReactTable(tableOptions);
 

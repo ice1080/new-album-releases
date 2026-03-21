@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTidal } from '../hooks/useTidal';
-import { getWithExpiry, setWithExpiry } from '../utils/localStorage';
+import {
+  getWithExpiry,
+  removeItem,
+  setWithExpiry,
+} from '../utils/localStorage';
 import {
   addArtistsToAlbums,
   AlbumWithArtist,
@@ -43,11 +47,15 @@ export default function Home() {
   // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
   const CUTOFF_DAYS_AGO = 250;
 
+  const [maxSavedAlbumsInfinity, setMaxSavedAlbumsInfinity] =
+    useState<boolean>(false);
+  const [maxSavedAlbumsNumber, setMaxSavedAlbumsNumber] = useState<number>(200);
+
   // const [topArtists] = useState<Artist[]>([]);
   // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
   // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
   const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
-  const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(true);
+  const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(false);
   // const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoadingSavedAlbums, setIsLoadingSavedAlbums] =
     useState<boolean>(false);
@@ -56,6 +64,7 @@ export default function Home() {
   const [currentProcess, setCurrentProcess] = useState<ProcessType>(
     ProcessType.NONE
   );
+  const fetchRunIdRef = useRef(0);
   const [albumsWithArtists, setAlbumsWithArtists] = useState<
     Map<string, AlbumWithArtist>
   >(new Map());
@@ -66,6 +75,18 @@ export default function Home() {
   );
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
+
+  const maxSavedAlbums = useMemo(() => {
+    return maxSavedAlbumsInfinity ? Infinity : maxSavedAlbumsNumber;
+  }, [maxSavedAlbumsInfinity, maxSavedAlbumsNumber]);
+
+  const clearSavedAlbumCaches = useCallback(() => {
+    if (!user) return;
+
+    removeItem(`${SAVED_ALBUMS_STORAGE_KEY}_${user.id}`);
+    removeItem(`${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`);
+    removeItem(`${ARTIST_ALBUMS_STORAGE_KEY}_${user.id}`);
+  }, [user]);
 
   // const getAllTopArtists = () => {
   //   console.log("getAllTopArtists");
@@ -120,6 +141,7 @@ export default function Home() {
       try {
         const localSavedAlbums = await getAllSavedAlbums(tidalClient, user, {
           onApiCall: () => setApiCount((prev) => prev + 1),
+          maxSavedAlbums,
         });
 
         // Store albums in localStorage with expiry
@@ -142,7 +164,7 @@ export default function Home() {
       }
     }
     return [];
-  }, [addSavedToQuery, tidalClient, user, hasLoggedIn]);
+  }, [addSavedToQuery, tidalClient, user, hasLoggedIn, maxSavedAlbums]);
 
   const fetchAllAlbumArtistIds = useCallback(
     async (savedAlbums: SavedAlbum[]): Promise<AlbumWithArtist[]> => {
@@ -169,6 +191,7 @@ export default function Home() {
             savedAlbums,
             {
               onApiCall: () => setApiCount((prev) => prev + 1),
+              maxSavedAlbums,
             }
           );
 
@@ -193,7 +216,7 @@ export default function Home() {
       }
       return [];
     },
-    [addSavedToQuery, hasLoggedIn, tidalClient, user]
+    [addSavedToQuery, hasLoggedIn, tidalClient, user, maxSavedAlbums]
   );
 
   const fetchAllArtistAlbums = useCallback(
@@ -429,6 +452,7 @@ export default function Home() {
   useEffect(() => {
     const asyncMethod = async () => {
       if (hasLoggedIn && addSavedToQuery) {
+        const runId = ++fetchRunIdRef.current;
         // console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
         // console.log('retrieving album artist ids');
@@ -437,6 +461,11 @@ export default function Home() {
         console.log('retrieved albumsWithArtists', _albumsWithArtists);
         // console.log('retrieving artist albums');
         const result = await fetchAllArtistAlbums(_albumsWithArtists);
+
+        // If another fetch started while we were waiting on the network,
+        // ignore these stale results.
+        if (runId !== fetchRunIdRef.current) return;
+
         setAlbumsWithArtists(
           new Map(
             _albumsWithArtists
@@ -568,6 +597,35 @@ export default function Home() {
         </label>
         <br />
         <label>
+          Max saved albums:
+          <input
+            type="number"
+            min={0}
+            step={1}
+            disabled={maxSavedAlbumsInfinity}
+            value={maxSavedAlbumsNumber}
+            onChange={(e) => {
+              const parsed = Math.floor(Number(e.target.value));
+              if (!Number.isNaN(parsed) && parsed >= 0) {
+                setMaxSavedAlbumsNumber(parsed);
+                clearSavedAlbumCaches();
+              }
+            }}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={maxSavedAlbumsInfinity}
+            onChange={(e) => {
+              clearSavedAlbumCaches();
+              setMaxSavedAlbumsInfinity(e.target.checked);
+            }}
+          />
+          Infinity
+        </label>
+        <br />
+        <label>
           Show My Saved Albums:
           <input
             type={'checkbox'}
@@ -579,6 +637,7 @@ export default function Home() {
         <RecentAlbumReleases
           recentAlbums={recentAlbums}
           albumIdToArtistsMap={albumIdToArtistsMap}
+          showMySavedAlbums={showMySavedAlbums}
         />
       </>
     );

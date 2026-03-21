@@ -1,4 +1,3 @@
-const MAX_SAVED_ALBUMS = 200;
 const CHUNK_SIZE = 20;
 
 interface TidalAPIClient {
@@ -16,6 +15,7 @@ interface FetchOptions {
   initialRetryDelay?: number;
   maxRetryDelay?: number;
   onApiCall?: () => void;
+  maxSavedAlbums?: number;
 }
 
 interface AlbumAttributes {
@@ -196,6 +196,7 @@ export const getAllSavedAlbums = async (
   options: FetchOptions = {}
 ): Promise<SavedAlbum[]> => {
   const localSavedAlbums: SavedAlbum[] = [];
+  const maxSavedAlbums = options.maxSavedAlbums ?? Infinity;
   let nextUrl: string | undefined = undefined;
   let hasMore = true;
 
@@ -222,7 +223,9 @@ export const getAllSavedAlbums = async (
     }
 
     // TODO remove this eventually or set to Infinity
-    if (localSavedAlbums.length > MAX_SAVED_ALBUMS) {
+    if (maxSavedAlbums !== Infinity && localSavedAlbums.length > maxSavedAlbums) {
+      // Trim to the configured limit and stop paging.
+      localSavedAlbums.splice(maxSavedAlbums);
       hasMore = false;
       continue;
     }
@@ -309,6 +312,7 @@ export const addArtistsToAlbums = async (
   options: FetchOptions = {}
 ): Promise<AlbumWithArtist[]> => {
   const localAlbums: AlbumWithArtist[] = [];
+  const maxSavedAlbums = options.maxSavedAlbums ?? Infinity;
   const allAlbumIds = savedAlbums.map((album) => album.id);
 
   // Split allAlbumIds into chunks
@@ -342,7 +346,6 @@ export const addArtistsToAlbums = async (
       );
     }
 
-    // TODO figure out how to remove duplicates - perhaps same name by same artist? - prefer explicit if it exists
     // TODO change this to list of artists perhaps? how do we find out which is the primary artist of an album?
     localAlbums.push(
       ...items.map((album) => {
@@ -369,7 +372,8 @@ export const addArtistsToAlbums = async (
     }
 
     // TODO remove this eventually
-    if (localAlbums.length > MAX_SAVED_ALBUMS) {
+    if (maxSavedAlbums !== Infinity && localAlbums.length > maxSavedAlbums) {
+      localAlbums.splice(maxSavedAlbums);
       break;
     }
   }

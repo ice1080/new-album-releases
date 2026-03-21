@@ -383,41 +383,37 @@ export default function Home() {
     return date;
   }, []);
 
-  // const isDuplicateAlbum = (album1, album2) => {
-  //   // TODO figure out a better way to display duplicate albums
-  //   return (
-  //     album1.id === album2.id
-  //     /* || */
-  //     /* (album1.name === album2.name && album1.artistName === album2.artistName) */
-  //   );
-  // };
+  const isDuplicateAlbum = useCallback(
+    (album1: AlbumWithArtist, album2: AlbumWithArtist) => {
+      return (
+        album1.id === album2.id ||
+        (album1.attributes.title === album2.attributes.title &&
+          album1.artist?.id === album2.artist?.id)
+      );
+    },
+    []
+  );
 
-  // const filterAlbums = (albums) => {
-  //   if (albums) {
-  //     return (
-  //       Object.values(albums)
-  //         /* .filter((albumId, idx, array) => {
-  //          *   return (
-  //          *     array.findIndex((arrayEl) =>
-  //          *       isDuplicateAlbum(albums[arrayEl], albums[albumId])
-  //          *     ) === idx
-  //          *   );
-  //          * }) */
-  //         .sort((a, b) => {
-  //           return new Date(b.release_date) - new Date(a.release_date);
-  //         })
-  //     );
-  //   } else {
-  //     return [];
-  //   }
-  // };
+  // TODO remove future albums
+  const filterAlbums = useCallback(
+    (albums: AlbumWithArtist[]) => {
+      // De-dupe albums using `isDuplicateAlbum`
+      const dedupedAlbums = albums.filter((album, idx, array) => {
+        return (
+          array.findIndex((candidate) => isDuplicateAlbum(album, candidate)) ===
+          idx
+        );
+      });
 
-  // useEffect(() => {
-  //   if (hasLoggedIn) {
-  //     getAllTopArtists();
-  //     getAllSavedAlbums();
-  //   }
-  // }, [getAllSavedAlbums, getAllTopArtists, hasLoggedIn]);
+      return dedupedAlbums.sort((a, b) => {
+        return (
+          new Date(b.attributes.releaseDate).getTime() -
+          new Date(a.attributes.releaseDate).getTime()
+        );
+      });
+    },
+    [isDuplicateAlbum]
+  );
 
   // useEffect(() => {
   //   /* console.log("topArtists", topArtists); */
@@ -490,8 +486,14 @@ export default function Home() {
       }
     });
 
-    return output;
-  }, [artistsWithAlbums, cutoffDate, albumsWithArtists, artistsMap]);
+    return filterAlbums(output);
+  }, [
+    filterAlbums,
+    artistsWithAlbums,
+    cutoffDate,
+    albumsWithArtists,
+    artistsMap,
+  ]);
 
   const albumIdToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
     const reverseMap = new Map<string, AlbumArtistInfo[]>();
@@ -575,7 +577,6 @@ export default function Home() {
         </label>
 
         <RecentAlbumReleases
-          // recentAlbums={filterAlbums(recentAlbums)}
           recentAlbums={recentAlbums}
           albumIdToArtistsMap={albumIdToArtistsMap}
         />

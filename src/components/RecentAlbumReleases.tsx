@@ -3,10 +3,9 @@ import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
-  VisibilityState,
   useReactTable,
 } from '@tanstack/react-table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { AlbumWithArtist } from '../utils/tidal';
 import { parseReleaseDate } from '../utils/releaseDate';
 
@@ -18,24 +17,35 @@ interface AlbumArtistInfo {
 interface RecentAlbumReleasesProps {
   recentAlbums: AlbumWithArtist[];
   albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
-  showMySavedAlbums: boolean;
+  /** Per-album saved-to-library status; undefined while loading */
+  savedStatusByAlbumId?: Map<string, boolean>;
 }
 
 export default function RecentAlbumReleases({
   recentAlbums,
   albumIdToArtistsMap,
-  showMySavedAlbums,
+  savedStatusByAlbumId,
 }: RecentAlbumReleasesProps) {
   const getImageHref = useCallback(
     (album: AlbumWithArtist): string => album.coverArtFiles?.at(-1)?.href || '',
     []
   );
 
-  const getSavedCell = () => {
-    // TODO handle onClick (first have to determine what albums are saved already)
-    // Tidal Album doesn't have isAlbumSaved property, so always show undefined/question mark
-    return <QuestionMark />;
-  };
+  const renderSavedCell = useCallback(
+    (album: AlbumWithArtist) => {
+      const id = album.id;
+      if (!id) return '—';
+      if (savedStatusByAlbumId === undefined) {
+        return <QuestionMark fontSize="small" />;
+      }
+      const saved = savedStatusByAlbumId.get(id);
+      if (saved === undefined) {
+        return <QuestionMark fontSize="small" />;
+      }
+      return saved ? '✅' : '❌';
+    },
+    [savedStatusByAlbumId]
+  );
 
   const getArtistName = useCallback(
     (album: AlbumWithArtist): string => {
@@ -104,10 +114,10 @@ export default function RecentAlbumReleases({
         id: 'saved',
         header: 'Saved',
         accessorFn: () => undefined,
-        cell: getSavedCell,
+        cell: (props) => renderSavedCell(props.row.original),
       },
     ],
-    [getArtistName, getImageHref]
+    [getArtistName, getImageHref, renderSavedCell]
   );
 
   const sortedRecentAlbums = useMemo(() => {
@@ -125,27 +135,10 @@ export default function RecentAlbumReleases({
     });
   }, [recentAlbums]);
 
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    () => ({
-      saved: showMySavedAlbums,
-    })
-  );
-
-  useEffect(() => {
-    setColumnVisibility((prev: VisibilityState) => ({
-      ...prev,
-      saved: showMySavedAlbums,
-    }));
-  }, [showMySavedAlbums]);
-
   const tableOptions = {
     columns,
     data: sortedRecentAlbums,
     getCoreRowModel: getCoreRowModel(),
-    state: {
-      columnVisibility,
-    },
-    onColumnVisibilityChange: setColumnVisibility,
   };
   const tableInstance = useReactTable(tableOptions);
 

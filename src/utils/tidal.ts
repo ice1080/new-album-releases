@@ -419,6 +419,7 @@ interface TidalArtistAlbumsRelationshipPage {
   links?: { next?: string };
 }
 
+// TODO this is super slow, probably need to find a better way to do this
 /**
  * Follows paginated album relationship URLs until `links.next` is absent.
  * Merges `included` and any full album resources in `data` into `albumsMap`.
@@ -462,8 +463,7 @@ const fetchArtistAlbumsBeyondFirstPage = async (
     }
 
     const nextCursor: string | undefined = page.links?.next;
-    nextUrl =
-      nextCursor && nextCursor !== nextUrl ? nextCursor : undefined;
+    nextUrl = nextCursor && nextCursor !== nextUrl ? nextCursor : undefined;
   }
 
   return extraAlbumIds;

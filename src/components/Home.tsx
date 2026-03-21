@@ -29,6 +29,13 @@ interface AlbumArtistInfo {
 const SAVED_ALBUMS_STORAGE_KEY = 'tidal_saved_albums';
 const ALBUMS_WITH_ARTISTS_STORAGE_KEY = 'tidal_albums_with_artists';
 const ARTIST_ALBUMS_STORAGE_KEY = 'tidal_artist_albums';
+const RECENT_SAVED_STATUS_STORAGE_KEY = 'tidal_recent_album_saved_status';
+
+type RecentAlbumSavedStatusCache = {
+  recentFingerprint: string;
+  savedLibraryKey: string;
+  statuses: Record<string, boolean>;
+};
 
 /**
  * Checks if the required conditions are met for API calls
@@ -54,8 +61,6 @@ export default function Home() {
     DEFAULT_MAX_SAVED_ALBUMS
   );
 
-  // TODO add an api call to actually fetch saved albums
-  const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(false);
   // const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoadingSavedAlbums, setIsLoadingSavedAlbums] =
     useState<boolean>(false);
@@ -73,6 +78,12 @@ export default function Home() {
   const [artistsMap, setArtistsMap] = useState<Map<string, TidalArtist>>(
     new Map()
   );
+  const [savedAlbumIds, setSavedAlbumIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [recentAlbumSavedStatus, setRecentAlbumSavedStatus] = useState<
+    Map<string, boolean> | undefined
+  >(undefined);
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
 
@@ -86,37 +97,9 @@ export default function Home() {
     removeItem(`${SAVED_ALBUMS_STORAGE_KEY}_${user.id}`);
     removeItem(`${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`);
     removeItem(`${ARTIST_ALBUMS_STORAGE_KEY}_${user.id}`);
+    removeItem(`${RECENT_SAVED_STATUS_STORAGE_KEY}_${user.id}`);
+    setRecentAlbumSavedStatus(undefined);
   }, [user]);
-
-  // const getAllTopArtists = () => {
-  //   console.log("getAllTopArtists");
-  //   setIsLoading(true);
-  //   let artistPromises = [];
-  //   let artistLimitArray = [50, 50];
-  //   artistLimitArray.forEach((limit, i) => {
-  //     incrementApiCount();
-  //     artistPromises.push(
-  //       spotifyApi.getMyTopArtists({
-  //         time_range: "long_term",
-  //         limit: limit,
-  //         offset: i * TOP_ARTISTS_LIMIT,
-  //       })
-  //     );
-  //   });
-  //   Promise.all(artistPromises).then((artistsList) => {
-  //     let localTopArtists = [];
-  //     artistsList.forEach((values) => {
-  //       localTopArtists = localTopArtists.concat(values.items);
-  //     });
-  //     localTopArtists = localTopArtists.sort((a, b) => {
-  //       if (a.popularity > b.popularity) return -1;
-  //       if (b.popularity < a.popularity) return 1;
-  //       return 0;
-  //     });
-  //     /* console.log("top artists", localTopArtists, localTopArtists.length); */
-  //     setTopArtists(localTopArtists);
-  //   });
-  // };
 
   const fetchAllSavedAlbums = useCallback(async (): Promise<SavedAlbum[]> => {
     if (tidalClient && hasLoggedIn && user) {
@@ -360,6 +343,9 @@ export default function Home() {
         const runId = ++fetchRunIdRef.current;
         // console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
+        setSavedAlbumIds(
+          new Set(savedAlbums.map((a) => a.id).filter(Boolean) as string[])
+        );
         // console.log('retrieving album artist ids');
         const _albumsWithArtists = await fetchAllAlbumArtistIds(savedAlbums);
         // TODO at some point need to save artist Ids to artist names somewhere
@@ -428,6 +414,61 @@ export default function Home() {
     artistsMap,
   ]);
 
+  const recentAlbumsFingerprint = useMemo(() => {
+    const ids = Array.from(
+      new Set(recentAlbums.map((a) => a.id).filter(Boolean) as string[])
+    ).sort();
+    return ids.join(',');
+  }, [recentAlbums]);
+
+  const savedLibraryKey = useMemo(() => {
+    const sorted = Array.from(savedAlbumIds).sort();
+    return `${savedAlbumIds.size}:${sorted.join(',')}`;
+  }, [savedAlbumIds]);
+
+  useEffect(() => {
+    if (!user || recentAlbums.length === 0) {
+      return;
+    }
+
+    const recentIds = Array.from(
+      new Set(recentAlbums.map((a) => a.id).filter(Boolean) as string[])
+    ).sort();
+
+    const cacheKey = `${RECENT_SAVED_STATUS_STORAGE_KEY}_${user.id}`;
+    const cached = getWithExpiry<RecentAlbumSavedStatusCache>(cacheKey);
+
+    if (
+      cached &&
+      cached.recentFingerprint === recentAlbumsFingerprint &&
+      cached.savedLibraryKey === savedLibraryKey
+    ) {
+      setRecentAlbumSavedStatus(new Map(Object.entries(cached.statuses)));
+      return;
+    }
+
+    if (savedAlbumIds.size === 0) {
+      return;
+    }
+
+    const statuses: Record<string, boolean> = {};
+    for (const id of recentIds) {
+      statuses[id] = savedAlbumIds.has(id);
+    }
+    setRecentAlbumSavedStatus(new Map(Object.entries(statuses)));
+    setWithExpiry(cacheKey, {
+      recentFingerprint: recentAlbumsFingerprint,
+      savedLibraryKey,
+      statuses,
+    });
+  }, [
+    user,
+    recentAlbums,
+    recentAlbumsFingerprint,
+    savedLibraryKey,
+    savedAlbumIds,
+  ]);
+
   const albumIdToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
     const reverseMap = new Map<string, AlbumArtistInfo[]>();
 
@@ -479,12 +520,6 @@ export default function Home() {
     return reverseMap;
   }, [artistsWithAlbums, artistsMap, albumsWithArtists]);
 
-  // useEffect(() => {
-  //   if (showMySavedAlbums && Object.keys(recentAlbums).length > 0) {
-  //     addSavedAlbums();
-  //   }
-  // }, [recentAlbums, showMySavedAlbums]);
-
   const renderCurrentView = () => {
     // if (currentView === 'artists') {
     //   return <TopArtists topArtists={topArtists} />;
@@ -520,19 +555,10 @@ export default function Home() {
           Infinity
         </label>
         <br />
-        <label>
-          Show My Saved Albums:
-          <input
-            type={'checkbox'}
-            onChange={() => setShowMySavedAlbums(!showMySavedAlbums)}
-            checked={showMySavedAlbums}
-          />
-        </label>
-
         <RecentAlbumReleases
           recentAlbums={recentAlbums}
           albumIdToArtistsMap={albumIdToArtistsMap}
-          showMySavedAlbums={showMySavedAlbums}
+          savedStatusByAlbumId={recentAlbumSavedStatus}
         />
       </>
     );

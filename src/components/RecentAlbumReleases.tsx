@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlbumWithArtist } from '../utils/tidal';
+import { parseReleaseDate } from '../utils/releaseDate';
 
 interface AlbumArtistInfo {
   id: string;
@@ -88,7 +89,11 @@ export default function RecentAlbumReleases({
         cell: (props) => {
           const releaseDate = props.getValue() as string;
           if (!releaseDate) return 'Unknown';
-          return new Date(Date.parse(releaseDate)).toLocaleDateString('en-us', {
+
+          const parsed = parseReleaseDate(releaseDate);
+          if (!parsed) return 'Unknown';
+
+          return parsed.toLocaleDateString('en-us', {
             year: 'numeric',
             month: 'short',
             day: '2-digit',
@@ -110,10 +115,10 @@ export default function RecentAlbumReleases({
     return [...recentAlbums].sort((a, b) => {
       // Handle possible missing releaseDate (newest first)
       const dateA = a.attributes?.releaseDate
-        ? new Date(a.attributes.releaseDate).getTime()
+        ? parseReleaseDate(a.attributes.releaseDate)?.getTime() ?? 0
         : 0;
       const dateB = b.attributes?.releaseDate
-        ? new Date(b.attributes.releaseDate).getTime()
+        ? parseReleaseDate(b.attributes.releaseDate)?.getTime() ?? 0
         : 0;
       // Descending: latest first
       return dateB - dateA;

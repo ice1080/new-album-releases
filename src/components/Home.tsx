@@ -19,6 +19,7 @@ import ApiCount from './ApiCount';
 import CurrentProcess, { ProcessType } from './CurrentProcess';
 import LoadingIcon from './LoadingIcon';
 import RecentAlbumReleases from './RecentAlbumReleases';
+import { parseReleaseDate } from '../utils/releaseDate';
 
 interface AlbumArtistInfo {
   id: string;
@@ -46,10 +47,13 @@ export default function Home() {
   // const ALBUMS_VIEW = 'albums';
   // const ARTIST_MIN_SAVED_ALBUM_COUNT = 2;
   const CUTOFF_DAYS_AGO = 250;
+  const DEFAULT_MAX_SAVED_ALBUMS = 500;
 
   const [maxSavedAlbumsInfinity, setMaxSavedAlbumsInfinity] =
     useState<boolean>(false);
-  const [maxSavedAlbumsNumber, setMaxSavedAlbumsNumber] = useState<number>(200);
+  const [maxSavedAlbumsNumber, setMaxSavedAlbumsNumber] = useState<number>(
+    DEFAULT_MAX_SAVED_ALBUMS
+  );
 
   // const [topArtists] = useState<Artist[]>([]);
   // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
@@ -429,10 +433,9 @@ export default function Home() {
       });
 
       return dedupedAlbums.sort((a, b) => {
-        return (
-          new Date(b.attributes.releaseDate).getTime() -
-          new Date(a.attributes.releaseDate).getTime()
-        );
+        const dateB = parseReleaseDate(b.attributes.releaseDate)?.getTime();
+        const dateA = parseReleaseDate(a.attributes.releaseDate)?.getTime();
+        return (dateB ?? 0) - (dateA ?? 0);
       });
     },
     [isDuplicateAlbum]
@@ -495,8 +498,8 @@ export default function Home() {
         albums.forEach((album) => {
           let releaseDateValue = album.attributes?.releaseDate;
           if (releaseDateValue) {
-            const albumReleaseDate = new Date(releaseDateValue);
-            if (albumReleaseDate >= cutoffDate) {
+            const albumReleaseDate = parseReleaseDate(releaseDateValue);
+            if (albumReleaseDate && albumReleaseDate >= cutoffDate) {
               const modifiedAlbum = {
                 ...album,
                 artist: {

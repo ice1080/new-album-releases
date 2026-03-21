@@ -222,8 +222,10 @@ export const getAllSavedAlbums = async (
       console.log(`Fetched ${localSavedAlbums.length} albums so far...`);
     }
 
-    // TODO remove this eventually or set to Infinity
-    if (maxSavedAlbums !== Infinity && localSavedAlbums.length > maxSavedAlbums) {
+    if (
+      maxSavedAlbums !== Infinity &&
+      localSavedAlbums.length > maxSavedAlbums
+    ) {
       // Trim to the configured limit and stop paging.
       localSavedAlbums.splice(maxSavedAlbums);
       hasMore = false;
@@ -325,6 +327,7 @@ export const addArtistsToAlbums = async (
   // Process each chunk synchronously
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
+    // TODO this only includes cover art for saved albums, not for other albums
     const url = `/albums?filter[id]=${chunk.join(',')}&include=artists,coverArt`;
 
     const response = await makeApiCallWithRetry<TidalAlbumResponse>(
@@ -371,7 +374,6 @@ export const addArtistsToAlbums = async (
       console.log(`Fetched ${localAlbums.length} albums so far...`);
     }
 
-    // TODO remove this eventually
     if (maxSavedAlbums !== Infinity && localAlbums.length > maxSavedAlbums) {
       localAlbums.splice(maxSavedAlbums);
       break;
@@ -409,6 +411,63 @@ interface TidalArtistsResponse {
   data?: TidalArtist[];
   included?: Album[];
 }
+
+/** JSON:API relationship page when following `relationships.albums.links.next`. */
+interface TidalArtistAlbumsRelationshipPage {
+  data?: { id: string }[] | { id: string };
+  included?: Album[];
+  links?: { next?: string };
+}
+
+/**
+ * Follows paginated album relationship URLs until `links.next` is absent.
+ * Merges `included` and any full album resources in `data` into `albumsMap`.
+ */
+const fetchArtistAlbumsBeyondFirstPage = async (
+  tidalClient: TidalAPIClient,
+  firstNextUrl: string,
+  albumsMap: Map<string, AlbumWithArtist>,
+  options: FetchOptions
+): Promise<string[]> => {
+  const extraAlbumIds: string[] = [];
+  let nextUrl: string | undefined = firstNextUrl;
+  let previousUrl: string | undefined;
+
+  while (nextUrl) {
+    if (nextUrl === previousUrl) break;
+    previousUrl = nextUrl;
+
+    const page: TidalArtistAlbumsRelationshipPage =
+      await makeApiCallWithRetry<TidalArtistAlbumsRelationshipPage>(
+        tidalClient,
+        nextUrl,
+        options
+      );
+
+    for (const album of page.included || []) {
+      if (album.id) {
+        albumsMap.set(album.id, album as AlbumWithArtist);
+      }
+    }
+
+    const raw = page.data;
+    const rows = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    for (const row of rows) {
+      if (!row?.id) continue;
+      extraAlbumIds.push(row.id);
+      const asAlbum = row as Album;
+      if (asAlbum.attributes && asAlbum.relationships) {
+        albumsMap.set(row.id, asAlbum as AlbumWithArtist);
+      }
+    }
+
+    const nextCursor: string | undefined = page.links?.next;
+    nextUrl =
+      nextCursor && nextCursor !== nextUrl ? nextCursor : undefined;
+  }
+
+  return extraAlbumIds;
+};
 
 export interface ArtistAlbumsResult {
   artistAlbumsMap: Map<string, AlbumWithArtist[]>;
@@ -460,11 +519,18 @@ export const getAllArtistAlbums = async (
     for (const artist of artists) {
       artistsMap.set(artist.id, artist);
 
-      if (artist.relationships?.albums?.links?.next) {
-        // todo this artist has more albums to retrieve
-      }
       const albumsData = artist.relationships?.albums?.data || [];
-      const albumIds = albumsData.map((album) => album.id);
+      let albumIds = albumsData.map((album) => album.id);
+      const albumsNext = artist.relationships?.albums?.links?.next;
+      if (albumsNext) {
+        const moreIds = await fetchArtistAlbumsBeyondFirstPage(
+          tidalClient,
+          albumsNext,
+          allResponseAlbumsMap,
+          options
+        );
+        albumIds = albumIds.concat(moreIds);
+      }
 
       // TODO instead of getting all albums for the artist, just get the ones in the release date range that we care about
       const albumsForArtist = albumIds

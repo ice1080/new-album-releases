@@ -34,12 +34,11 @@ const ARTIST_ALBUMS_STORAGE_KEY = 'tidal_artist_albums';
  * Checks if the required conditions are met for API calls
  */
 const canFetch = (
-  addSavedToQuery: boolean,
   tidalClient: unknown,
   hasLoggedIn: boolean,
   user: unknown
 ): boolean => {
-  return !!(addSavedToQuery && tidalClient && hasLoggedIn && user);
+  return !!(tidalClient && hasLoggedIn && user);
 };
 
 export default function Home() {
@@ -55,10 +54,7 @@ export default function Home() {
     DEFAULT_MAX_SAVED_ALBUMS
   );
 
-  // const [topArtists] = useState<Artist[]>([]);
-  // const [savedAlbumArtists, setSavedAlbumArtists] = useState<Artist[]>([]);
-  // const [addSavedToQuery, setAddSavedToQuery] = useState(false);
-  const [addSavedToQuery, setAddSavedToQuery] = useState<boolean>(true);
+  // TODO add an api call to actually fetch saved albums
   const [showMySavedAlbums, setShowMySavedAlbums] = useState<boolean>(false);
   // const [currentView, setCurrentView] = useState<string>(ALBUMS_VIEW);
   const [isLoadingSavedAlbums, setIsLoadingSavedAlbums] =
@@ -123,7 +119,7 @@ export default function Home() {
   // };
 
   const fetchAllSavedAlbums = useCallback(async (): Promise<SavedAlbum[]> => {
-    if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
+    if (tidalClient && hasLoggedIn && user) {
       // Check for cached albums first
       const cachedAlbums = getWithExpiry<SavedAlbum[]>(
         `${SAVED_ALBUMS_STORAGE_KEY}_${user.id}`
@@ -168,11 +164,11 @@ export default function Home() {
       }
     }
     return [];
-  }, [addSavedToQuery, tidalClient, user, hasLoggedIn, maxSavedAlbums]);
+  }, [tidalClient, user, hasLoggedIn, maxSavedAlbums]);
 
   const fetchAllAlbumArtistIds = useCallback(
     async (savedAlbums: SavedAlbum[]): Promise<AlbumWithArtist[]> => {
-      if (addSavedToQuery && tidalClient && hasLoggedIn && user) {
+      if (tidalClient && hasLoggedIn && user) {
         // Check for cached artist counts first
         const cachedArtistCountsArray = getWithExpiry<AlbumWithArtist[]>(
           `${ALBUMS_WITH_ARTISTS_STORAGE_KEY}_${user.id}`
@@ -220,7 +216,7 @@ export default function Home() {
       }
       return [];
     },
-    [addSavedToQuery, hasLoggedIn, tidalClient, user, maxSavedAlbums]
+    [hasLoggedIn, tidalClient, user, maxSavedAlbums]
   );
 
   const fetchAllArtistAlbums = useCallback(
@@ -230,7 +226,7 @@ export default function Home() {
       artistAlbumsMap: Map<string, AlbumWithArtist[]>;
       artistsMap: Map<string, TidalArtist>;
     }> => {
-      if (!canFetch(addSavedToQuery, tidalClient, hasLoggedIn, user)) {
+      if (!canFetch(tidalClient, hasLoggedIn, user)) {
         return {
           artistAlbumsMap: new Map<string, AlbumWithArtist[]>(),
           artistsMap: new Map<string, TidalArtist>(),
@@ -318,91 +314,8 @@ export default function Home() {
         setCurrentProcess(ProcessType.NONE);
       }
     },
-    [addSavedToQuery, hasLoggedIn, tidalClient, user]
+    [hasLoggedIn, tidalClient, user]
   );
-
-  // const addSavedAlbums = async () => {
-  //   console.log("addSavedAlbums");
-  //   await new Promise((r) => setTimeout(r, 5000));
-  //   let tempRecentAlbums = { ...recentAlbums };
-  //   const albumIds = Object.keys(recentAlbums).filter(
-  //     (albumId) => recentAlbums[albumId].isAlbumSaved === undefined
-  //   );
-  //   if (albumIds.length) {
-  //     for (let i = 0; i < albumIds.length; i += SAVED_ALBUMS_LIMIT) {
-  //       const tempIds = albumIds.slice(i, i + SAVED_ALBUMS_LIMIT);
-  //       incrementApiCount();
-  //       await spotifyApi
-  //         .containsMySavedAlbums(tempIds)
-  //         .then((savedBooleans, err) => {
-  //           savedBooleans.forEach((isAlbumSaved, idx) => {
-  //             tempRecentAlbums[tempIds[idx]].isAlbumSaved = isAlbumSaved;
-  //           });
-  //         });
-  //     }
-  //     setRecentAlbums(tempRecentAlbums);
-  //   }
-  // };
-
-  // const getAllRecentAlbums = async () => {
-  //   console.log("getAllRecentAlbums");
-  //   await new Promise((r) => setTimeout(r, 5000));
-  //   let allRecentAlbums = {};
-  //   let artistAlbumPromises = [];
-  //   let allArtists = combineArtistLists();
-  //   console.log("allArtists", allArtists.length, allArtists);
-  //   let i = 0;
-  //   for (const artist of allArtists) {
-  //     if (i % 50 === 0) {
-  //       await new Promise((r) => setTimeout(r, 5000));
-  //     }
-  //     /* allArtists.forEach((artist) => { */
-  //     // this may be needed once more artists are added (e.g. hundreds)
-  //     /* if (!artist.recentAlbums) { */
-  //     incrementApiCount();
-  //     artistAlbumPromises.push(
-  //       spotifyApi.getArtistAlbums(artist.id, {
-  //         include_groups: "album",
-  //       })
-  //     );
-  //     /* } */
-  //     /* }); */
-  //     i++;
-  //   }
-  //   Promise.all(artistAlbumPromises).then((values) => {
-  //     values.forEach((data, i) => {
-  //       if (data.items && data.items.length) {
-  //         const recentArtistAlbums = data.items
-  //           .filter((album) => Date.parse(album.release_date) > getCutoffDate())
-  //           .map((album) => {
-  //             album.artistName = allArtists[i].name;
-  //             return album;
-  //           });
-  //         if (recentArtistAlbums.length > 0) {
-  //           recentArtistAlbums.map((item) => (allRecentAlbums[item.id] = item));
-  //         }
-  //       }
-  //     });
-  //     setRecentAlbums(allRecentAlbums);
-  //     setIsLoading(false);
-  //     /* console.log("done retrieving all recent albums"); */
-  //   });
-  // };
-
-  // const combineArtistLists = () => {
-  //   let combined = {};
-  //   topArtists.forEach((artist) => {
-  //     combined[artist.id] = artist;
-  //   });
-  //   if (addSavedToQuery) {
-  //     savedAlbumArtists.forEach((artist) => {
-  //       if (!combined[artist.id]) {
-  //         combined[artist.id] = artist;
-  //       }
-  //     });
-  //   }
-  //   return Object.values(combined);
-  // };
 
   const cutoffDate = useMemo(() => {
     let date = new Date();
@@ -441,20 +354,9 @@ export default function Home() {
     [isDuplicateAlbum]
   );
 
-  // useEffect(() => {
-  //   /* console.log("topArtists", topArtists); */
-  //   /* console.log("savedAlbumArtists", savedAlbumArtists); */
-  //   if (
-  //     topArtists.length > 0 &&
-  //     (savedAlbumArtists.length > 0 || !addSavedToQuery)
-  //   ) {
-  //     getAllRecentAlbums();
-  //   }
-  // }, [topArtists, savedAlbumArtists]);
-
   useEffect(() => {
     const asyncMethod = async () => {
-      if (hasLoggedIn && addSavedToQuery) {
+      if (hasLoggedIn) {
         const runId = ++fetchRunIdRef.current;
         // console.log('retrieving albums');
         const savedAlbums = await fetchAllSavedAlbums();
@@ -483,7 +385,6 @@ export default function Home() {
     };
     void asyncMethod();
   }, [
-    addSavedToQuery,
     hasLoggedIn,
     fetchAllSavedAlbums,
     fetchAllAlbumArtistIds,
@@ -590,15 +491,6 @@ export default function Home() {
     // } else if (currentView === 'albums') {
     return (
       <>
-        <label>
-          Add all saved albums to list of artists to query for new releases:
-          <input
-            type={'checkbox'}
-            onChange={() => setAddSavedToQuery(!addSavedToQuery)}
-            checked={addSavedToQuery}
-          />
-        </label>
-        <br />
         <label>
           Max saved albums:
           <input

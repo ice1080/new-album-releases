@@ -401,7 +401,6 @@ export default function Home() {
                     ({} as ArtistAttributes),
                   type: 'artists' as ArtistsType,
                 },
-                coverArtFiles: albumsWithArtists.get(album.id)?.coverArtFiles,
               };
               output.push(modifiedAlbum);
             }
@@ -411,13 +410,7 @@ export default function Home() {
     });
 
     return filterAlbums(output);
-  }, [
-    filterAlbums,
-    artistsWithAlbums,
-    cutoffDate,
-    albumsWithArtists,
-    artistsMap,
-  ]);
+  }, [filterAlbums, artistsWithAlbums, cutoffDate, artistsMap]);
 
   const recentAlbumsFingerprint = useMemo(() => {
     const ids = Array.from(

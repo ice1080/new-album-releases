@@ -327,8 +327,7 @@ export const addArtistsToAlbums = async (
   // Process each chunk synchronously
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    // TODO NEXT this only includes cover art for saved albums, not for other albums
-    const url = `/albums?filter[id]=${chunk.join(',')}&include=artists,coverArt`;
+    const url = `/albums?filter[id]=${chunk.join(',')}&include=artists`;
 
     const response = await makeApiCallWithRetry<TidalAlbumResponse>(
       tidalClient,
@@ -359,13 +358,7 @@ export const addArtistsToAlbums = async (
               item.type === 'artists' &&
               item.id === album.relationships.artists.data[0]?.id
           ),
-          coverArtFiles:
-            included.find(
-              (item) =>
-                item.type === 'artworks' &&
-                item.id === album.relationships.coverArt.data[0]?.id
-            )?.attributes?.files || [],
-        } as AlbumWithArtist; // TOOD would be nice if I didn't have to manually type this
+        } as AlbumWithArtist;
       })
     );
 

@@ -1,10 +1,12 @@
 import QuestionMark from '@mui/icons-material/QuestionMark';
+import Tooltip from '@mui/material/Tooltip';
 import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import type { ReactNode } from 'react';
 import { useCallback, useMemo } from 'react';
 import { AlbumWithArtist } from '../utils/tidal';
 import { parseReleaseDate } from '../utils/releaseDate';
@@ -45,12 +47,12 @@ export default function RecentAlbumReleases({
     [savedStatusByAlbumId]
   );
 
-  const getArtistName = useCallback(
+  const getArtistSortValue = useCallback(
     (album: AlbumWithArtist): string => {
       if (!album.id) return 'Unknown Album?';
 
       if (album.artist) {
-        return `${album.artist.attributes.name} (${album.artist?.id})`;
+        return album.artist.attributes.name;
       }
 
       const artists = albumIdToArtistsMap.get(album.id);
@@ -58,10 +60,48 @@ export default function RecentAlbumReleases({
         return artists.map((artist) => artist.name).join(', ');
       }
 
-      // Fallback to IDs if map doesn't have the album
       const artistIds = album.relationships?.artists?.data || [];
       if (artistIds.length > 0) {
         return artistIds.map((artist) => artist.id).join(', ');
+      }
+
+      return 'Unknown Artist(s)';
+    },
+    [albumIdToArtistsMap]
+  );
+
+  const renderArtistCell = useCallback(
+    (album: AlbumWithArtist) => {
+      if (!album.id) return 'Unknown Album?';
+
+      const wrap = (label: ReactNode, id: string) => (
+        <Tooltip title={id}>
+          <span className="nameWithIdTooltip">{label}</span>
+        </Tooltip>
+      );
+
+      if (album.artist) {
+        return wrap(album.artist.attributes.name, album.artist.id);
+      }
+
+      const artists = albumIdToArtistsMap.get(album.id);
+      if (artists && artists.length > 0) {
+        return artists.map((artist, index) => (
+          <span key={artist.id}>
+            {index > 0 ? ', ' : null}
+            {wrap(artist.name, artist.id)}
+          </span>
+        ));
+      }
+
+      const artistIds = album.relationships?.artists?.data || [];
+      if (artistIds.length > 0) {
+        const idList = artistIds.map((a) => a.id).join(', ');
+        return (
+          <Tooltip title={idList}>
+            <span className="nameWithIdTooltip">Unknown artist(s)</span>
+          </Tooltip>
+        );
       }
 
       return 'Unknown Artist(s)';
@@ -88,12 +128,23 @@ export default function RecentAlbumReleases({
       },
       {
         header: 'Artist',
-        accessorFn: getArtistName,
+        accessorFn: getArtistSortValue,
+        cell: ({ row }) => renderArtistCell(row.original),
       },
       {
         header: 'Album Name',
-        accessorFn: (album) =>
-          `${album.attributes?.title} (${album.id})` || 'Unknown',
+        accessorFn: (album) => album.attributes?.title || 'Unknown',
+        cell: ({ row }) => {
+          const album = row.original;
+          const title = album.attributes?.title || 'Unknown';
+          const id = album.id;
+          if (!id) return title;
+          return (
+            <Tooltip title={id}>
+              <span className="nameWithIdTooltip">{title}</span>
+            </Tooltip>
+          );
+        },
       },
       {
         header: 'Date Released',
@@ -119,7 +170,12 @@ export default function RecentAlbumReleases({
         cell: (props) => renderSavedCell(props.row.original),
       },
     ],
-    [getArtistName, coverArtUrlByAlbumId, renderSavedCell]
+    [
+      getArtistSortValue,
+      renderArtistCell,
+      coverArtUrlByAlbumId,
+      renderSavedCell,
+    ]
   );
 
   const sortedRecentAlbums = useMemo(() => {

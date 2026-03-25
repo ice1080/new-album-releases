@@ -17,6 +17,8 @@ interface AlbumArtistInfo {
 interface RecentAlbumReleasesProps {
   recentAlbums: AlbumWithArtist[];
   albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
+  /** Album id → cover image URL (batch-fetched for recent releases) */
+  coverArtUrlByAlbumId: Map<string, string>;
   /** Per-album saved-to-library status; undefined while loading */
   savedStatusByAlbumId?: Map<string, boolean>;
 }
@@ -24,13 +26,9 @@ interface RecentAlbumReleasesProps {
 export default function RecentAlbumReleases({
   recentAlbums,
   albumIdToArtistsMap,
+  coverArtUrlByAlbumId,
   savedStatusByAlbumId,
 }: RecentAlbumReleasesProps) {
-  const getImageHref = useCallback(
-    (album: AlbumWithArtist): string => album.coverArtFiles?.at(-1)?.href || '',
-    []
-  );
-
   const renderSavedCell = useCallback(
     (album: AlbumWithArtist) => {
       const id = album.id;
@@ -74,15 +72,19 @@ export default function RecentAlbumReleases({
   const columns = useMemo<ColumnDef<AlbumWithArtist>[]>(
     () => [
       {
+        id: 'coverImage',
         header: 'Image',
-        accessorFn: getImageHref,
-        cell: (props) => (
-          <img
-            className={'albumImage'}
-            src={props.getValue() as string}
-            alt=""
-          />
-        ),
+        // Read URLs here, not via accessorFn + getValue(): TanStack Table caches
+        // accessor output per row and won't refresh when only coverArtUrlByAlbumId changes.
+        cell: ({ row }) => {
+          const album = row.original;
+          const fromMap = album.id
+            ? coverArtUrlByAlbumId.get(album.id)
+            : undefined;
+          const src =
+            fromMap || album.coverArtFiles?.at(-1)?.href || '';
+          return <img className={'albumImage'} src={src} alt="" />;
+        },
       },
       {
         header: 'Artist',
@@ -117,7 +119,7 @@ export default function RecentAlbumReleases({
         cell: (props) => renderSavedCell(props.row.original),
       },
     ],
-    [getArtistName, getImageHref, renderSavedCell]
+    [getArtistName, coverArtUrlByAlbumId, renderSavedCell]
   );
 
   const sortedRecentAlbums = useMemo(() => {
@@ -125,10 +127,10 @@ export default function RecentAlbumReleases({
     return [...recentAlbums].sort((a, b) => {
       // Handle possible missing releaseDate (newest first)
       const dateA = a.attributes?.releaseDate
-        ? parseReleaseDate(a.attributes.releaseDate)?.getTime() ?? 0
+        ? (parseReleaseDate(a.attributes.releaseDate)?.getTime() ?? 0)
         : 0;
       const dateB = b.attributes?.releaseDate
-        ? parseReleaseDate(b.attributes.releaseDate)?.getTime() ?? 0
+        ? (parseReleaseDate(b.attributes.releaseDate)?.getTime() ?? 0)
         : 0;
       // Descending: latest first
       return dateB - dateA;

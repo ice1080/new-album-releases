@@ -8,6 +8,7 @@ import {
 import {
   addArtistsToAlbums,
   AlbumWithArtist,
+  fetchAlbumCoverArtUrlsByIds,
   getAllArtistAlbums,
   getAllSavedAlbums,
   SavedAlbum,
@@ -84,6 +85,10 @@ export default function Home() {
   const [recentAlbumSavedStatus, setRecentAlbumSavedStatus] = useState<
     Map<string, boolean> | undefined
   >(undefined);
+  const [recentAlbumCoverArtUrlById, setRecentAlbumCoverArtUrlById] = useState<
+    Map<string, string>
+  >(() => new Map());
+  const coverArtFetchRunIdRef = useRef(0);
 
   const { tidalClient, user, hasLoggedIn } = useTidal();
 
@@ -469,6 +474,41 @@ export default function Home() {
     savedAlbumIds,
   ]);
 
+  useEffect(() => {
+    if (!canFetch(tidalClient, hasLoggedIn, user)) {
+      setRecentAlbumCoverArtUrlById(new Map());
+      return;
+    }
+
+    const ids = Array.from(
+      new Set(recentAlbums.map((a) => a.id).filter(Boolean) as string[])
+    );
+    if (ids.length === 0) {
+      setRecentAlbumCoverArtUrlById(new Map());
+      return;
+    }
+
+    const runId = ++coverArtFetchRunIdRef.current;
+    void (async () => {
+      try {
+        const map = await fetchAlbumCoverArtUrlsByIds(tidalClient!, ids, {
+          onApiCall: () => setApiCount((c) => c + 1),
+        });
+        if (runId !== coverArtFetchRunIdRef.current) {
+          console.log("run id didn't match");
+          return;
+        }
+        console.log('album cover art map', map);
+        setRecentAlbumCoverArtUrlById(map);
+      } catch (error) {
+        console.error('Error fetching recent album cover art:', error);
+        if (runId === coverArtFetchRunIdRef.current) {
+          setRecentAlbumCoverArtUrlById(new Map());
+        }
+      }
+    })();
+  }, [tidalClient, hasLoggedIn, user, recentAlbums]);
+
   const albumIdToArtistsMap: Map<string, AlbumArtistInfo[]> = useMemo(() => {
     const reverseMap = new Map<string, AlbumArtistInfo[]>();
 
@@ -558,6 +598,7 @@ export default function Home() {
         <RecentAlbumReleases
           recentAlbums={recentAlbums}
           albumIdToArtistsMap={albumIdToArtistsMap}
+          coverArtUrlByAlbumId={recentAlbumCoverArtUrlById}
           savedStatusByAlbumId={recentAlbumSavedStatus}
         />
       </>

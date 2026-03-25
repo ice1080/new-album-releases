@@ -8,6 +8,16 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
   - REACT_APP_SPOTIFY_RELEASE_CLIENT_ID
   - REACT_APP_SPOTIFY_RELEASE_CLIENT_SECRET
 
+## TODO
+
+- [ ] Change the current process to be a checklist of all things being completed
+- [ ] Hide the ids as tooltips instead of parens
+- [ ] remove future albums
+- [ ] find a way to show the primary artist on an album
+- [ ] find a way to show the list of artists on an album when there are multiple primaries
+- [ ] filter out albums with "Deluxe" in the name, or "Live at", or "(live)", or "th Anniversary", or "instrumentals?", or "(remixes)", or "soundtrack"
+- [ ] change from react scripts to rsbuild or vite
+
 ## Available Scripts
 
 In the project directory, you can run:

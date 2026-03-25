@@ -327,7 +327,7 @@ export const addArtistsToAlbums = async (
   // Process each chunk synchronously
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    // TODO this only includes cover art for saved albums, not for other albums
+    // TODO NEXT this only includes cover art for saved albums, not for other albums
     const url = `/albums?filter[id]=${chunk.join(',')}&include=artists,coverArt`;
 
     const response = await makeApiCallWithRetry<TidalAlbumResponse>(
@@ -383,6 +383,50 @@ export const addArtistsToAlbums = async (
   return localAlbums;
 };
 
+/**
+ * Batched album-by-id fetch with coverArt included. Returns album id → largest
+ * artwork href (same resolution choice as coverArtFiles.at(-1).href).
+ */
+export const fetchAlbumCoverArtUrlsByIds = async (
+  tidalClient: TidalAPIClient,
+  albumIds: string[],
+  options: FetchOptions = {}
+): Promise<Map<string, string>> => {
+  const urlByAlbumId = new Map<string, string>();
+  const uniqueIds = Array.from(new Set(albumIds.filter(Boolean)));
+  if (uniqueIds.length === 0) {
+    return urlByAlbumId;
+  }
+
+  const chunks = chunkArray(uniqueIds, CHUNK_SIZE);
+  for (const chunk of chunks) {
+    const url = `/albums?filter[id]=${chunk.join(',')}&include=coverArt`;
+    const response = await makeApiCallWithRetry<TidalAlbumResponse>(
+      tidalClient,
+      url,
+      options
+    );
+
+    const items = response.data || [];
+    const included = response.included || [];
+    for (const album of items) {
+      if (!album.id) continue;
+      const coverArtRefId = album.relationships?.coverArt?.data?.[0]?.id;
+      if (!coverArtRefId) continue;
+      const files = included.find(
+        (item): item is IncludedCoverArt =>
+          item.type === 'artworks' && item.id === coverArtRefId
+      )?.attributes?.files;
+      const href = files?.at(-1)?.href;
+      if (href) {
+        urlByAlbumId.set(album.id, href);
+      }
+    }
+  }
+
+  return urlByAlbumId;
+};
+
 export interface ArtistAttributes {
   name: string;
   [key: string]: unknown;
@@ -419,7 +463,7 @@ interface TidalArtistAlbumsRelationshipPage {
   links?: { next?: string };
 }
 
-// TODO this is super slow, probably need to find a better way to do this
+// TODO IMPORTANT this is super slow, probably need to find a better way to do this
 /**
  * Follows paginated album relationship URLs until `links.next` is absent.
  * Merges `included` and any full album resources in `data` into `albumsMap`.

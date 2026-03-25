@@ -32,6 +32,9 @@ const ALBUMS_WITH_ARTISTS_STORAGE_KEY = 'tidal_albums_with_artists';
 const ARTIST_ALBUMS_STORAGE_KEY = 'tidal_artist_albums';
 const RECENT_SAVED_STATUS_STORAGE_KEY = 'tidal_recent_album_saved_status';
 
+/** Hide release dates more than this far ahead of "now" (allows imminent releases). */
+const RELEASE_DATE_MAX_AHEAD_MS = 2 * 24 * 60 * 60 * 1000;
+
 type RecentAlbumSavedStatusCache = {
   recentFingerprint: string;
   savedLibraryKey: string;
@@ -322,9 +325,10 @@ export default function Home() {
     []
   );
 
-  // TODO remove future albums
   const filterAlbums = useCallback(
     (albums: AlbumWithArtist[]) => {
+      const maxReleaseTime = Date.now() + RELEASE_DATE_MAX_AHEAD_MS;
+
       // De-dupe albums using `isDuplicateAlbum`
       const dedupedAlbums = albums.filter((album, idx, array) => {
         return (
@@ -333,7 +337,13 @@ export default function Home() {
         );
       });
 
-      return dedupedAlbums.sort((a, b) => {
+      const withoutFarFutureDated = dedupedAlbums.filter((album) => {
+        const d = parseReleaseDate(album.attributes.releaseDate);
+        if (!d) return true;
+        return d.getTime() <= maxReleaseTime;
+      });
+
+      return withoutFarFutureDated.sort((a, b) => {
         const dateB = parseReleaseDate(b.attributes.releaseDate)?.getTime();
         const dateA = parseReleaseDate(a.attributes.releaseDate)?.getTime();
         return (dateB ?? 0) - (dateA ?? 0);

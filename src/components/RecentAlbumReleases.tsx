@@ -16,6 +16,8 @@ interface AlbumArtistInfo {
   name: string;
 }
 
+// TODO find some way to display why an artist is listed. Like show the saved album count for that artist?
+
 interface RecentAlbumReleasesProps {
   recentAlbums: AlbumWithArtist[];
   albumIdToArtistsMap: Map<string, AlbumArtistInfo[]>;
@@ -121,8 +123,7 @@ export default function RecentAlbumReleases({
           const fromMap = album.id
             ? coverArtUrlByAlbumId.get(album.id)
             : undefined;
-          const src =
-            fromMap || album.coverArtFiles?.at(-1)?.href || '';
+          const src = fromMap || album.coverArtFiles?.at(-1)?.href || '';
           return <img className={'albumImage'} src={src} alt="" />;
         },
       },

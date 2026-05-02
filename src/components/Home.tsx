@@ -63,7 +63,7 @@ export default function Home() {
   const DEFAULT_MAX_SAVED_ALBUMS = 500;
 
   const [maxSavedAlbumsInfinity, setMaxSavedAlbumsInfinity] =
-    useState<boolean>(false);
+    useState<boolean>(true);
   const [maxSavedAlbumsNumber, setMaxSavedAlbumsNumber] = useState<number>(
     DEFAULT_MAX_SAVED_ALBUMS
   );

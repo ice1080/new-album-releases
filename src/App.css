@@ -60,3 +60,8 @@ td:has(.albumImage) {
   height: 64px;
   display: block;
 }
+
+.nameWithIdTooltip {
+  cursor: default;
+  text-underline-offset: 2px;
+}

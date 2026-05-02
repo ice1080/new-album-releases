@@ -2,11 +2,13 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Spotify Setup
+## Tidal setup
 
-- You have to have these environment variables set:
-  - REACT_APP_SPOTIFY_RELEASE_CLIENT_ID
-  - REACT_APP_SPOTIFY_RELEASE_CLIENT_SECRET
+Register an OAuth application in the [Tidal developer dashboard](https://developer.tidal.com/dashboard) and set these environment variables (for example in a `.env` file in the project root):
+
+- **REACT_APP_TIDAL_CLIENT_ID** (required) — your Tidal app client ID.
+- **REACT_APP_TIDAL_REDIRECT_URI** (optional) — must match the redirect URL configured for your app. If omitted, the dev server defaults to `http://localhost:<port>/tidal-redirect` (port from `PORT` or `3000`).
+- **REACT_APP_TIDAL_SCOPES** (optional) — OAuth scopes; if omitted, the app uses the defaults defined in `src/hooks/useTidal.ts`.
 
 ## TODO
 
